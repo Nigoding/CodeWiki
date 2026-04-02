@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: codewiki-java
+
+# ── LLM configuration ─────────────────────────────────────────────────────────
+codewiki:
+  llm:
+    primary-model: gpt-4o
+    fallback-model: gpt-4o-mini
+    # Override base-url to point at any OpenAI-compatible endpoint
+    base-url: ${LLM_BASE_URL:https://api.openai.com/v1}
+    api-key: ${LLM_API_KEY:}
+    max-tokens: 8192
+    temperature: 0.0
+
+  # ── Agent behaviour ──────────────────────────────────────────────────────────
+  agent:
+    max-depth: 3
+    max-tokens-per-leaf-module: 4000
+    module-tree-filename: module_tree.json
+    overview-filename: overview.md
+
+    # ── Concurrency / rate-limiting ────────────────────────────────────────────
+    concurrency:
+      # Number of sub-agent tasks that may run simultaneously.
+      # Also the thread-pool size.  Back-pressure via CallerRunsPolicy.
+      max-concurrent-sub-agents: 4
+
+      # Maximum simultaneous LLM HTTP calls across all threads.
+      # Should be <= max-concurrent-sub-agents.
+      max-concurrent-llm-calls: 3
+
+      # Bounded queue capacity for the sub-agent thread pool.
+      thread-pool-queue-capacity: 20
+
+      # Minutes a task may wait for a rate-limit permit before timing out.
+      rate-limit-timeout-minutes: 5
+
+logging:
+  level:
+    com.codewiki: DEBUG
+    org.springframework.ai: INFO
