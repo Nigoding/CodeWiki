@@ -1,8 +1,10 @@
 package com.codewiki.agent.strategy;
 
+import com.codewiki.agent.AgentExecutionResult;
 import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.evaluator.ModuleComplexityEvaluator;
 import com.codewiki.prompt.PromptBuilderService;
+import com.codewiki.service.DocumentationPersistenceService;
 import com.codewiki.tools.GenerateSubModuleDocTools;
 import com.codewiki.tools.ReadCodeComponentsTools;
 import com.codewiki.tools.StrReplaceEditorTools;
@@ -15,17 +17,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
-import java.util.Map;
 
-/**
- * Agent strategy for complex modules (multi-file, above token threshold, below max depth).
- *
- * Tool set: read_code_components + str_replace_editor + generate_sub_module_documentation
- * System prompt: system-complex.st
- *
- * This strategy is evaluated first (@Order(1)) because it carries the strictest preconditions.
- * If the module does NOT meet those conditions, the LeafModuleStrategy (@Order(2)) handles it.
- */
 @Component
 @Order(1)
 public class ComplexModuleStrategy implements AgentStrategy {
@@ -39,6 +31,7 @@ public class ComplexModuleStrategy implements AgentStrategy {
     private final GenerateSubModuleDocTools subModuleTool;
     private final PromptBuilderService promptBuilder;
     private final ModuleComplexityEvaluator evaluator;
+    private final DocumentationPersistenceService persistenceService;
 
     public ComplexModuleStrategy(
             @Primary ChatClient primaryChatClient,
@@ -47,7 +40,8 @@ public class ComplexModuleStrategy implements AgentStrategy {
             StrReplaceEditorTools editorTool,
             GenerateSubModuleDocTools subModuleTool,
             PromptBuilderService promptBuilder,
-            ModuleComplexityEvaluator evaluator) {
+            ModuleComplexityEvaluator evaluator,
+            DocumentationPersistenceService persistenceService) {
         this.primaryChatClient  = primaryChatClient;
         this.fallbackChatClient = fallbackChatClient;
         this.readTool           = readTool;
@@ -55,6 +49,7 @@ public class ComplexModuleStrategy implements AgentStrategy {
         this.subModuleTool      = subModuleTool;
         this.promptBuilder      = promptBuilder;
         this.evaluator          = evaluator;
+        this.persistenceService = persistenceService;
     }
 
     @Override
@@ -64,29 +59,28 @@ public class ComplexModuleStrategy implements AgentStrategy {
     }
 
     @Override
-    public Map<String, Object> execute(ModuleExecutionContext ctx) {
+    public AgentExecutionResult execute(ModuleExecutionContext ctx) {
         log.info("[ComplexAgent] Processing module: {}", ctx.getModuleName());
-        return doExecute(primaryChatClient, ctx);
+        return doExecute(primaryChatClient, ctx, false);
     }
 
     @Override
-    public Map<String, Object> executeWithFallback(ModuleExecutionContext ctx) {
+    public AgentExecutionResult executeWithFallback(ModuleExecutionContext ctx) {
         log.warn("[ComplexAgent] Switching to fallback model for module: {}", ctx.getModuleName());
-        return doExecute(fallbackChatClient, ctx);
+        return doExecute(fallbackChatClient, ctx, true);
     }
 
-    private Map<String, Object> doExecute(ChatClient client, ModuleExecutionContext ctx) {
-        client.prompt()
+    private AgentExecutionResult doExecute(ChatClient client, ModuleExecutionContext ctx, boolean fallback) {
+        String content = client.prompt()
                 .system(promptBuilder.buildComplexSystemPrompt(ctx))
                 .user(promptBuilder.buildUserPrompt(ctx))
-                // All three tools registered; Spring AI discovers @Tool methods via reflection
                 .tools(readTool, editorTool, subModuleTool)
-                // Runtime context passed through Spring AI's ToolContext mechanism
-                .toolContext(Collections.singletonMap(
+                .toolContext(Collections.<String, Object>singletonMap(
                         GenerateSubModuleDocTools.CTX_KEY, ctx))
                 .call()
                 .content();
 
-        return ctx.getModuleTreeManager().getReadOnlySnapshot();
+        boolean written = persistenceService.moduleDocExists(ctx.getAbsoluteDocsPath(), ctx.getModuleName());
+        return new AgentExecutionResult(content, written, fallback);
     }
 }

@@ -3,7 +3,6 @@ package com.codewiki.tree;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -38,7 +37,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * Callers must never hold a reference to the internal map and mutate it directly.
  * All structural changes go through the public write methods on this class.
  */
-@Component
 public class ModuleTreeManager {
 
     private static final Logger log = LoggerFactory.getLogger(ModuleTreeManager.class);
@@ -61,6 +59,15 @@ public class ModuleTreeManager {
             log.debug("Registered top-level module: {}", moduleName);
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    public boolean containsTopLevelModule(String moduleName) {
+        lock.readLock().lock();
+        try {
+            return root.containsKey(moduleName);
+        } finally {
+            lock.readLock().unlock();
         }
     }
 

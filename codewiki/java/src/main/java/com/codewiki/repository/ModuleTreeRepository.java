@@ -14,22 +14,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class ModuleTreeRepository {
 
-    /**
-     * Persist the current state of the module tree to the given file.
-     *
-     * @param docsPath absolute path to the documentation output directory
-     * @param filename the JSON file name, e.g. "module_tree.json"
-     * @param manager  the module tree manager holding the in-memory state
-     */
-    public void save(String docsPath, String filename, ModuleTreeManager manager) {
-        manager.saveToFile(docsPath, filename);
+    public ModuleTreeManager load(String docsPath, String filename) {
+        ModuleTreeManager manager = new ModuleTreeManager();
+        manager.loadFromFile(docsPath, filename);
+        return manager;
     }
 
-    /**
-     * Load a previously persisted tree into the given manager.
-     * No-op if the file does not exist.
-     */
-    public void load(String docsPath, String filename, ModuleTreeManager manager) {
-        manager.loadFromFile(docsPath, filename);
+    public void save(String docsPath, String filename, ModuleTreeManager manager) {
+        manager.saveToFile(docsPath, filename);
     }
 }

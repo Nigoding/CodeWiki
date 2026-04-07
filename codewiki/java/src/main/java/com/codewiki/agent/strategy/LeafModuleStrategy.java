@@ -1,7 +1,9 @@
 package com.codewiki.agent.strategy;
 
+import com.codewiki.agent.AgentExecutionResult;
 import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.prompt.PromptBuilderService;
+import com.codewiki.service.DocumentationPersistenceService;
 import com.codewiki.tools.GenerateSubModuleDocTools;
 import com.codewiki.tools.ReadCodeComponentsTools;
 import com.codewiki.tools.StrReplaceEditorTools;
@@ -14,18 +16,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
-import java.util.Map;
 
-/**
- * Agent strategy for simple / leaf modules (single-file, or below the token threshold,
- * or at the maximum recursion depth).
- *
- * Tool set: read_code_components + str_replace_editor (NO generate_sub_module_documentation)
- * System prompt: system-leaf.st
- *
- * @Order(2) makes this the catch-all: supports() always returns true.
- * It is only reached when ComplexModuleStrategy.supports() returns false.
- */
 @Component
 @Order(2)
 public class LeafModuleStrategy implements AgentStrategy {
@@ -37,49 +28,51 @@ public class LeafModuleStrategy implements AgentStrategy {
     private final ReadCodeComponentsTools readTool;
     private final StrReplaceEditorTools editorTool;
     private final PromptBuilderService promptBuilder;
+    private final DocumentationPersistenceService persistenceService;
 
     public LeafModuleStrategy(
             @Primary ChatClient primaryChatClient,
             @Qualifier("fallback") ChatClient fallbackChatClient,
             ReadCodeComponentsTools readTool,
             StrReplaceEditorTools editorTool,
-            PromptBuilderService promptBuilder) {
+            PromptBuilderService promptBuilder,
+            DocumentationPersistenceService persistenceService) {
         this.primaryChatClient  = primaryChatClient;
         this.fallbackChatClient = fallbackChatClient;
         this.readTool           = readTool;
         this.editorTool         = editorTool;
         this.promptBuilder      = promptBuilder;
+        this.persistenceService = persistenceService;
     }
 
-    /** Always returns true: this is the fallback strategy when no other matches. */
     @Override
     public boolean supports(ModuleExecutionContext ctx) {
         return true;
     }
 
     @Override
-    public Map<String, Object> execute(ModuleExecutionContext ctx) {
+    public AgentExecutionResult execute(ModuleExecutionContext ctx) {
         log.info("[LeafAgent] Processing module: {}", ctx.getModuleName());
-        return doExecute(primaryChatClient, ctx);
+        return doExecute(primaryChatClient, ctx, false);
     }
 
     @Override
-    public Map<String, Object> executeWithFallback(ModuleExecutionContext ctx) {
+    public AgentExecutionResult executeWithFallback(ModuleExecutionContext ctx) {
         log.warn("[LeafAgent] Switching to fallback model for module: {}", ctx.getModuleName());
-        return doExecute(fallbackChatClient, ctx);
+        return doExecute(fallbackChatClient, ctx, true);
     }
 
-    private Map<String, Object> doExecute(ChatClient client, ModuleExecutionContext ctx) {
-        client.prompt()
+    private AgentExecutionResult doExecute(ChatClient client, ModuleExecutionContext ctx, boolean fallback) {
+        String content = client.prompt()
                 .system(promptBuilder.buildLeafSystemPrompt(ctx))
                 .user(promptBuilder.buildUserPrompt(ctx))
-                // Only two tools: sub-module delegation is intentionally absent
                 .tools(readTool, editorTool)
-                .toolContext(Collections.singletonMap(
+                .toolContext(Collections.<String, Object>singletonMap(
                         GenerateSubModuleDocTools.CTX_KEY, ctx))
                 .call()
                 .content();
 
-        return ctx.getModuleTreeManager().getReadOnlySnapshot();
+        boolean written = persistenceService.moduleDocExists(ctx.getAbsoluteDocsPath(), ctx.getModuleName());
+        return new AgentExecutionResult(content, written, fallback);
     }
 }
