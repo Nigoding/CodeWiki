@@ -1,7 +1,13 @@
 package com.codewiki.prompt;
 
+import com.codewiki.config.PromptContextProperties;
 import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.domain.Node;
+import com.codewiki.summary.ModuleBriefBuilder;
+import com.codewiki.summary.SummaryQueryService;
+import com.codewiki.summary.dto.ClassSummaryRecord;
+import com.codewiki.summary.dto.MethodSummaryRecord;
+import com.codewiki.summary.dto.ModuleBrief;
 import com.codewiki.util.TokenCounter;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Value;
@@ -64,9 +70,18 @@ public class PromptBuilderService {
     private Resource userPromptTemplate;
 
     private final TokenCounter tokenCounter;
+    private final SummaryQueryService summaryQueryService;
+    private final ModuleBriefBuilder moduleBriefBuilder;
+    private final PromptContextProperties promptContextProperties;
 
-    public PromptBuilderService(TokenCounter tokenCounter) {
+    public PromptBuilderService(TokenCounter tokenCounter,
+                                SummaryQueryService summaryQueryService,
+                                ModuleBriefBuilder moduleBriefBuilder,
+                                PromptContextProperties promptContextProperties) {
         this.tokenCounter = tokenCounter;
+        this.summaryQueryService = summaryQueryService;
+        this.moduleBriefBuilder = moduleBriefBuilder;
+        this.promptContextProperties = promptContextProperties;
     }
 
     // ── public API ────────────────────────────────────────────────────────────
@@ -82,11 +97,15 @@ public class PromptBuilderService {
     }
 
     public String buildUserPrompt(ModuleExecutionContext ctx) {
+        ModuleBrief brief = moduleBriefBuilder.build(ctx);
         Map<String, Object> vars = new HashMap<>();
-        vars.put("module_name",      ctx.getModuleName());
-        vars.put("module_tree",      formatModuleTree(ctx.getModuleTreeManager().getReadOnlySnapshot(),
-                                                       ctx.getModuleName()));
-        vars.put("core_components",  formatCoreComponents(ctx));
+        vars.put("module_name", ctx.getModuleName());
+        vars.put("module_tree", formatModuleTree(
+                ctx.getModuleTreeManager().getReadOnlySnapshot(),
+                ctx.getModuleName()));
+        vars.put("module_brief", renderModuleBrief(brief));
+        vars.put("key_summaries", renderKeySummaries(ctx));
+        vars.put("core_components", buildFallbackSourceContext(ctx, brief));
         return new PromptTemplate(userPromptTemplate).render(vars);
     }
 
@@ -95,7 +114,13 @@ public class PromptBuilderService {
      * user prompt.  Used by ModuleComplexityEvaluator to decide agent type.
      */
     public int countCoreComponentTokens(ModuleExecutionContext ctx) {
-        return tokenCounter.count(formatCoreComponents(ctx));
+        ModuleBrief brief = moduleBriefBuilder.build(ctx);
+        if (promptContextProperties.isPreferSummaryContext() && brief.isSummaryBacked()) {
+            return tokenCounter.count(renderModuleBrief(brief)) + tokenCounter.count(renderKeySummaries(ctx));
+        }
+        return tokenCounter.count(formatCoreComponentsWithinTokenBudget(
+                ctx,
+                promptContextProperties.getFallbackSourceTokens()));
     }
 
     // ── module tree formatting ────────────────────────────────────────────────
@@ -158,6 +183,10 @@ public class PromptBuilderService {
      * representation of each file's content.  Mirrors Python format_user_prompt().
      */
     private String formatCoreComponents(ModuleExecutionContext ctx) {
+        return formatCoreComponentsWithinTokenBudget(ctx, Integer.MAX_VALUE);
+    }
+
+    private String formatCoreComponentsWithinTokenBudget(ModuleExecutionContext ctx, int maxTokens) {
         // Group component IDs by their source file path
         Map<String, List<String>> byFile = new LinkedHashMap<>();
         for (String compId : ctx.getCoreComponentIds()) {
@@ -168,13 +197,19 @@ public class PromptBuilderService {
 
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, List<String>> entry : byFile.entrySet()) {
+            int currentTokens = tokenCounter.count(sb.toString());
+            if (currentTokens >= maxTokens) {
+                break;
+            }
+
             String relativePath = entry.getKey();
             List<String> idsInFile = entry.getValue();
+            StringBuilder section = new StringBuilder();
 
-            sb.append("# File: ").append(relativePath).append("\n\n");
-            sb.append("## Core Components in this file:\n");
+            section.append("# File: ").append(relativePath).append("\n\n");
+            section.append("## Core Components in this file:\n");
             for (String id : idsInFile) {
-                sb.append("- ").append(id).append("\n");
+                section.append("- ").append(id).append("\n");
             }
 
             // Determine language from file extension
@@ -185,16 +220,23 @@ public class PromptBuilderService {
             }
             String lang = EXTENSION_TO_LANGUAGE.getOrDefault(ext, "");
 
-            sb.append("\n## File Content:\n```").append(lang).append("\n");
+            section.append("\n## File Content:\n```").append(lang).append("\n");
 
             // Read the actual file content from the first component
             Node firstNode = ctx.getComponents().get(idsInFile.get(0));
             if (firstNode != null && firstNode.getContent() != null) {
-                sb.append(firstNode.getContent());
+                section.append(limitTextToTokens(
+                        firstNode.getContent(),
+                        Math.max(0, maxTokens - currentTokens - 30)));
             } else {
-                sb.append("// Error: file content not available");
+                section.append("// Error: file content not available");
             }
-            sb.append("\n```\n\n");
+            section.append("\n```\n\n");
+
+            if (tokenCounter.count(sb.toString() + section.toString()) > maxTokens) {
+                break;
+            }
+            sb.append(section);
         }
         return sb.toString();
     }
@@ -216,5 +258,86 @@ public class PromptBuilderService {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < n; i++) sb.append(s);
         return sb.toString();
+    }
+
+    private String renderModuleBrief(ModuleBrief brief) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("- Purpose: ").append(brief.getPurpose()).append("\n");
+
+        if (!brief.getDependencies().isEmpty()) {
+            sb.append("- Major dependencies: ")
+                    .append(String.join(", ", brief.getDependencies()))
+                    .append("\n");
+        }
+
+        if (!brief.getOpenQuestions().isEmpty()) {
+            sb.append("- Open questions:\n");
+            for (String q : brief.getOpenQuestions()) {
+                sb.append("  - ").append(q).append("\n");
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    private String renderKeySummaries(ModuleExecutionContext ctx) {
+        if (!promptContextProperties.isPreferSummaryContext()) {
+            return "";
+        }
+
+        List<ClassSummaryRecord> classes =
+                summaryQueryService.findClassSummariesByComponentIds(ctx.getCoreComponentIds());
+        List<MethodSummaryRecord> methods =
+                summaryQueryService.findMethodSummariesByComponentIds(ctx.getCoreComponentIds());
+
+        StringBuilder sb = new StringBuilder();
+        if (!classes.isEmpty()) {
+            sb.append("Class summaries:\n");
+            int classLimit = Math.min(promptContextProperties.getMaxClassSummaries(), classes.size());
+            for (int i = 0; i < classLimit; i++) {
+                ClassSummaryRecord c = classes.get(i);
+                sb.append("- ").append(c.getClassName())
+                        .append(" [").append(c.getRelativePath()).append("]: ")
+                        .append(safe(c.getSummary()))
+                        .append("\n");
+            }
+        }
+
+        if (!methods.isEmpty()) {
+            sb.append("Method summaries:\n");
+            int methodLimit = Math.min(promptContextProperties.getMaxMethodSummaries(), methods.size());
+            for (int i = 0; i < methodLimit; i++) {
+                MethodSummaryRecord m = methods.get(i);
+                sb.append("- ").append(m.getClassName())
+                        .append("#").append(m.getMethodName())
+                        .append(": ").append(safe(m.getSummary()))
+                        .append("\n");
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    private String buildFallbackSourceContext(ModuleExecutionContext ctx, ModuleBrief brief) {
+        if (promptContextProperties.isPreferSummaryContext() && brief.isSummaryBacked()) {
+            return "";
+        }
+        return formatCoreComponentsWithinTokenBudget(ctx, promptContextProperties.getFallbackSourceTokens());
+    }
+
+    private String limitTextToTokens(String text, int maxTokens) {
+        if (text == null || text.isEmpty() || maxTokens <= 0) {
+            return "";
+        }
+        if (tokenCounter.count(text) <= maxTokens) {
+            return text;
+        }
+        int maxChars = Math.max(64, maxTokens * 4);
+        if (text.length() <= maxChars) {
+            return text;
+        }
+        return text.substring(0, maxChars) + "\n// [truncated source context]";
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value.trim();
     }
 }

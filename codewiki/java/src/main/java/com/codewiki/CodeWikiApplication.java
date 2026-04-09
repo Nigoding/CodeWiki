@@ -3,6 +3,7 @@ package com.codewiki;
 import com.codewiki.config.AgentConcurrencyProperties;
 import com.codewiki.config.AgentProperties;
 import com.codewiki.config.LlmProperties;
+import com.codewiki.config.PromptContextProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -11,7 +12,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @EnableConfigurationProperties({
         AgentProperties.class,
         LlmProperties.class,
-        AgentConcurrencyProperties.class
+        AgentConcurrencyProperties.class,
+        PromptContextProperties.class
 })
 public class CodeWikiApplication {
 

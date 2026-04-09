@@ -13,6 +13,12 @@ codewiki:
     max-tokens: 8192
     temperature: 0.0
 
+  prompt:
+    prefer-summary-context: true
+    max-class-summaries: 8
+    max-method-summaries: 12
+    fallback-source-tokens: 800
+
   # ── Agent behaviour ──────────────────────────────────────────────────────────
   agent:
     max-depth: 3
