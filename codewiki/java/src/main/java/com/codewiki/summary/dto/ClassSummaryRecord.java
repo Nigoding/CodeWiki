@@ -1,5 +1,7 @@
 package com.codewiki.summary.dto;
 
+import com.codewiki.util.Texts;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -9,24 +11,21 @@ public class ClassSummaryRecord {
     private final String moduleName;
     private final String relativePath;
     private final String className;
-    private final String summary;
-    private final List<String> responsibilities;
-    private final List<String> dependencies;
+    private final ClassSummary classSummary;
+    private final String rawSummaryJson;
 
     public ClassSummaryRecord(String componentId,
                               String moduleName,
                               String relativePath,
                               String className,
-                              String summary,
-                              List<String> responsibilities,
-                              List<String> dependencies) {
+                              ClassSummary classSummary,
+                              String rawSummaryJson) {
         this.componentId = componentId;
         this.moduleName = moduleName;
         this.relativePath = relativePath;
         this.className = className;
-        this.summary = summary;
-        this.responsibilities = responsibilities == null ? Collections.<String>emptyList() : responsibilities;
-        this.dependencies = dependencies == null ? Collections.<String>emptyList() : dependencies;
+        this.classSummary = classSummary;
+        this.rawSummaryJson = rawSummaryJson;
     }
 
     public String getComponentId() {
@@ -45,15 +44,34 @@ public class ClassSummaryRecord {
         return className;
     }
 
-    public String getSummary() {
-        return summary;
+    public ClassSummary getClassSummary() {
+        return classSummary;
+    }
+
+    public String getRawSummaryJson() {
+        return rawSummaryJson;
+    }
+
+    public String getPurpose() {
+        return classSummary == null ? "" : Texts.trimToEmpty(classSummary.getPurpose());
+    }
+
+    public String getRole() {
+        return classSummary == null ? "" : Texts.trimToEmpty(classSummary.getRole());
+    }
+
+    public String getKeyFunctionality() {
+        return classSummary == null ? "" : Texts.trimToEmpty(classSummary.getKeyFunctionality());
     }
 
     public List<String> getResponsibilities() {
-        return responsibilities;
+        if (classSummary == null || Texts.trimToEmpty(classSummary.getKeyFunctionality()).isEmpty()) {
+            return Collections.emptyList();
+        }
+        return Collections.singletonList(Texts.trimToEmpty(classSummary.getKeyFunctionality()));
     }
 
     public List<String> getDependencies() {
-        return dependencies;
+        return Collections.emptyList();
     }
 }

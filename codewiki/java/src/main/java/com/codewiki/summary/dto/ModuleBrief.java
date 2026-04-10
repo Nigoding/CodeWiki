@@ -7,6 +7,9 @@ public class ModuleBrief {
 
     private final String moduleName;
     private final String purpose;
+    private final String coreBusinessFunction;
+    private final List<String> businessFlows;
+    private final List<String> keyBusinessEntities;
     private final List<String> keyClassSummaries;
     private final List<String> keyMethodSummaries;
     private final List<String> dependencies;
@@ -15,6 +18,9 @@ public class ModuleBrief {
 
     public ModuleBrief(String moduleName,
                        String purpose,
+                       String coreBusinessFunction,
+                       List<String> businessFlows,
+                       List<String> keyBusinessEntities,
                        List<String> keyClassSummaries,
                        List<String> keyMethodSummaries,
                        List<String> dependencies,
@@ -22,6 +28,9 @@ public class ModuleBrief {
                        boolean summaryBacked) {
         this.moduleName = moduleName;
         this.purpose = purpose;
+        this.coreBusinessFunction = coreBusinessFunction;
+        this.businessFlows = businessFlows == null ? Collections.<String>emptyList() : businessFlows;
+        this.keyBusinessEntities = keyBusinessEntities == null ? Collections.<String>emptyList() : keyBusinessEntities;
         this.keyClassSummaries = keyClassSummaries == null ? Collections.<String>emptyList() : keyClassSummaries;
         this.keyMethodSummaries = keyMethodSummaries == null ? Collections.<String>emptyList() : keyMethodSummaries;
         this.dependencies = dependencies == null ? Collections.<String>emptyList() : dependencies;
@@ -35,6 +44,18 @@ public class ModuleBrief {
 
     public String getPurpose() {
         return purpose;
+    }
+
+    public String getCoreBusinessFunction() {
+        return coreBusinessFunction;
+    }
+
+    public List<String> getBusinessFlows() {
+        return businessFlows;
+    }
+
+    public List<String> getKeyBusinessEntities() {
+        return keyBusinessEntities;
     }
 
     public List<String> getKeyClassSummaries() {

@@ -5,9 +5,12 @@ import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.domain.Node;
 import com.codewiki.summary.ModuleBriefBuilder;
 import com.codewiki.summary.SummaryQueryService;
+import com.codewiki.summary.dto.ClassSummary;
 import com.codewiki.summary.dto.ClassSummaryRecord;
+import com.codewiki.summary.dto.MethodSummary;
 import com.codewiki.summary.dto.MethodSummaryRecord;
 import com.codewiki.summary.dto.ModuleBrief;
+import com.codewiki.summary.dto.PackageSummaryRecord;
 import com.codewiki.tree.ModuleTreeManager;
 import com.codewiki.util.TokenCounter;
 import org.junit.jupiter.api.Test;
@@ -37,6 +40,9 @@ class PromptBuilderServiceTest {
                 new ModuleBrief(
                         "fat_module",
                         "Handles core business workflow.",
+                        "Manage business workflow execution.",
+                        Collections.singletonList("Order processing: validate -> dispatch"),
+                        Collections.singletonList("Order"),
                         Collections.singletonList("FatService orchestrates requests."),
                         Collections.singletonList("FatService#run validates and dispatches."),
                         Collections.singletonList("RepoClient"),
@@ -44,20 +50,31 @@ class PromptBuilderServiceTest {
                         true
                 )
         );
-        when(summaryQueryService.findClassSummariesByComponentIds(anyList())).thenReturn(
+        ClassSummary classSummary = new ClassSummary();
+        classSummary.setRole("Workflow coordinator");
+        classSummary.setKeyFunctionality("Coordinates module operations.");
+        classSummary.setPurpose("Ensure the workflow is executed correctly.");
+        when(summaryQueryService.findClassSummaries(any(), anyList())).thenReturn(
                 Collections.singletonList(
                         new ClassSummaryRecord(
                                 "src/huge/FatService.java::FatService",
                                 "fat_module",
                                 "src/huge/FatService.java",
                                 "FatService",
-                                "Coordinates module operations.",
-                                Collections.<String>emptyList(),
-                                Collections.<String>emptyList()
+                                classSummary,
+                                "{\"role\":\"Workflow coordinator\"}"
                         )
                 )
         );
-        when(summaryQueryService.findMethodSummariesByComponentIds(anyList())).thenReturn(
+        MethodSummary methodSummary = new MethodSummary();
+        methodSummary.setFunctionName("run");
+        methodSummary.setPurpose("Execute the workflow.");
+        methodSummary.setFinalSummary("Validates inputs and dispatches the workflow.");
+        methodSummary.setInputs(Collections.singletonList("Order request"));
+        methodSummary.setOutputs("Processing result");
+        methodSummary.setSideEffects(Collections.singletonList("Persist audit log"));
+        methodSummary.setDataFlow("Request -> validation -> dispatch -> result");
+        when(summaryQueryService.findMethodSummariesByFqns(any(), anyList())).thenReturn(
                 Collections.singletonList(
                         new MethodSummaryRecord(
                                 "src/huge/FatService.java::FatService#run",
@@ -65,11 +82,12 @@ class PromptBuilderServiceTest {
                                 "src/huge/FatService.java",
                                 "FatService",
                                 "run",
-                                "Validates inputs and dispatches the workflow.",
-                                Collections.<String>emptyList()
+                                methodSummary,
+                                "{\"functionName\":\"run\"}"
                         )
                 )
         );
+        when(summaryQueryService.findPackageSummaryByClass(any(), any())).thenReturn(null);
 
         PromptBuilderService service = new PromptBuilderService(
                 new TokenCounter(),
@@ -98,6 +116,9 @@ class PromptBuilderServiceTest {
                 new ModuleBrief(
                         "fat_module",
                         "Purpose should be inferred from the module tree and source evidence.",
+                        "",
+                        Collections.<String>emptyList(),
+                        Collections.<String>emptyList(),
                         Collections.<String>emptyList(),
                         Collections.<String>emptyList(),
                         Collections.<String>emptyList(),
@@ -105,8 +126,9 @@ class PromptBuilderServiceTest {
                         false
                 )
         );
-        when(summaryQueryService.findClassSummariesByComponentIds(anyList())).thenReturn(Collections.<ClassSummaryRecord>emptyList());
-        when(summaryQueryService.findMethodSummariesByComponentIds(anyList())).thenReturn(Collections.<MethodSummaryRecord>emptyList());
+        when(summaryQueryService.findClassSummaries(any(), anyList())).thenReturn(Collections.<ClassSummaryRecord>emptyList());
+        when(summaryQueryService.findMethodSummariesByFqns(any(), anyList())).thenReturn(Collections.<MethodSummaryRecord>emptyList());
+        when(summaryQueryService.findPackageSummaryByClass(any(), any())).thenReturn(null);
 
         PromptBuilderService service = new PromptBuilderService(
                 new TokenCounter(),
@@ -130,6 +152,9 @@ class PromptBuilderServiceTest {
                 "src/huge/FatService.java",
                 content,
                 "FatService");
+        node.setClassFqn("com.example.huge.FatService");
+        node.setMethodFqns(Collections.singletonList("com.example.huge.FatService#run()"));
+        node.setPackageFqns(Collections.singletonList("com.example.huge"));
 
         Map<String, Node> components = new HashMap<String, Node>();
         components.put(node.getId(), node);

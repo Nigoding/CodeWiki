@@ -73,6 +73,13 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
+        <!-- MyBatis-Plus for summary metadata queries -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-boot-starter</artifactId>
+            <version>3.5.7</version>
+        </dependency>
+
         <!-- Configuration-properties binding -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
