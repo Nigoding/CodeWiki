@@ -5,8 +5,6 @@ import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.evaluator.ModuleComplexityEvaluator;
 import com.codewiki.prompt.PromptBuilderService;
 import com.codewiki.service.DocumentationPersistenceService;
-import com.codewiki.summary.ModuleSummaryContext;
-import com.codewiki.summary.ModuleSummaryContextLoader;
 import com.codewiki.tools.GenerateSubModuleDocTools;
 import com.codewiki.tools.ReadCodeComponentsTools;
 import com.codewiki.tools.RecallSummaryTools;
@@ -36,7 +34,6 @@ public class ComplexModuleStrategy implements AgentStrategy {
     private final PromptBuilderService promptBuilder;
     private final ModuleComplexityEvaluator evaluator;
     private final DocumentationPersistenceService persistenceService;
-    private final ModuleSummaryContextLoader summaryContextLoader;
 
     public ComplexModuleStrategy(
             @Primary ChatClient primaryChatClient,
@@ -47,8 +44,7 @@ public class ComplexModuleStrategy implements AgentStrategy {
             GenerateSubModuleDocTools subModuleTool,
             PromptBuilderService promptBuilder,
             ModuleComplexityEvaluator evaluator,
-            DocumentationPersistenceService persistenceService,
-            ModuleSummaryContextLoader summaryContextLoader) {
+            DocumentationPersistenceService persistenceService) {
         this.primaryChatClient  = primaryChatClient;
         this.fallbackChatClient = fallbackChatClient;
         this.readTool           = readTool;
@@ -58,7 +54,6 @@ public class ComplexModuleStrategy implements AgentStrategy {
         this.promptBuilder      = promptBuilder;
         this.evaluator          = evaluator;
         this.persistenceService = persistenceService;
-        this.summaryContextLoader = summaryContextLoader;
     }
 
     @Override
@@ -70,18 +65,13 @@ public class ComplexModuleStrategy implements AgentStrategy {
     @Override
     public AgentExecutionResult execute(ModuleExecutionContext ctx) {
         log.info("[ComplexAgent] Processing module: {}", ctx.getModuleName());
-        return doExecute(primaryChatClient, enrichWithSummaryContext(ctx), false);
+        return doExecute(primaryChatClient, ctx, false);
     }
 
     @Override
     public AgentExecutionResult executeWithFallback(ModuleExecutionContext ctx) {
         log.warn("[ComplexAgent] Switching to fallback model for module: {}", ctx.getModuleName());
-        return doExecute(fallbackChatClient, enrichWithSummaryContext(ctx), true);
-    }
-
-    private ModuleExecutionContext enrichWithSummaryContext(ModuleExecutionContext ctx) {
-        ModuleSummaryContext summaryCtx = summaryContextLoader.load(ctx);
-        return ctx.withSummaryContext(summaryCtx);
+        return doExecute(fallbackChatClient, ctx, true);
     }
 
     private AgentExecutionResult doExecute(ChatClient client, ModuleExecutionContext ctx, boolean fallback) {

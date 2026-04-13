@@ -4,8 +4,6 @@ import com.codewiki.agent.AgentExecutionResult;
 import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.prompt.PromptBuilderService;
 import com.codewiki.service.DocumentationPersistenceService;
-import com.codewiki.summary.ModuleSummaryContext;
-import com.codewiki.summary.ModuleSummaryContextLoader;
 import com.codewiki.tools.GenerateSubModuleDocTools;
 import com.codewiki.tools.ReadCodeComponentsTools;
 import com.codewiki.tools.RecallSummaryTools;
@@ -33,7 +31,6 @@ public class LeafModuleStrategy implements AgentStrategy {
     private final StrReplaceEditorTools editorTool;
     private final PromptBuilderService promptBuilder;
     private final DocumentationPersistenceService persistenceService;
-    private final ModuleSummaryContextLoader summaryContextLoader;
 
     public LeafModuleStrategy(
             @Primary ChatClient primaryChatClient,
@@ -42,8 +39,7 @@ public class LeafModuleStrategy implements AgentStrategy {
             RecallSummaryTools recallSummaryTools,
             StrReplaceEditorTools editorTool,
             PromptBuilderService promptBuilder,
-            DocumentationPersistenceService persistenceService,
-            ModuleSummaryContextLoader summaryContextLoader) {
+            DocumentationPersistenceService persistenceService) {
         this.primaryChatClient  = primaryChatClient;
         this.fallbackChatClient = fallbackChatClient;
         this.readTool           = readTool;
@@ -51,7 +47,6 @@ public class LeafModuleStrategy implements AgentStrategy {
         this.editorTool         = editorTool;
         this.promptBuilder      = promptBuilder;
         this.persistenceService = persistenceService;
-        this.summaryContextLoader = summaryContextLoader;
     }
 
     @Override
@@ -62,18 +57,13 @@ public class LeafModuleStrategy implements AgentStrategy {
     @Override
     public AgentExecutionResult execute(ModuleExecutionContext ctx) {
         log.info("[LeafAgent] Processing module: {}", ctx.getModuleName());
-        return doExecute(primaryChatClient, enrichWithSummaryContext(ctx), false);
+        return doExecute(primaryChatClient, ctx, false);
     }
 
     @Override
     public AgentExecutionResult executeWithFallback(ModuleExecutionContext ctx) {
         log.warn("[LeafAgent] Switching to fallback model for module: {}", ctx.getModuleName());
-        return doExecute(fallbackChatClient, enrichWithSummaryContext(ctx), true);
-    }
-
-    private ModuleExecutionContext enrichWithSummaryContext(ModuleExecutionContext ctx) {
-        ModuleSummaryContext summaryCtx = summaryContextLoader.load(ctx);
-        return ctx.withSummaryContext(summaryCtx);
+        return doExecute(fallbackChatClient, ctx, true);
     }
 
     private AgentExecutionResult doExecute(ChatClient client, ModuleExecutionContext ctx, boolean fallback) {

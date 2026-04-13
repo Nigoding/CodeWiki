@@ -8,6 +8,8 @@ import com.codewiki.domain.ModuleTask;
 import com.codewiki.exception.DocumentationGenerationException;
 import com.codewiki.repository.ModuleTreeRepository;
 import com.codewiki.service.DocumentationPersistenceService;
+import com.codewiki.summary.ModuleSummaryContext;
+import com.codewiki.summary.ModuleSummaryContextLoader;
 import com.codewiki.tree.ModuleTreeManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,17 +32,20 @@ public class DocumentationOrchestrationService {
     private final ModuleExecutionContextFactory contextFactory;
     private final DocumentationPersistenceService persistenceService;
     private final AgentProperties agentProperties;
+    private final ModuleSummaryContextLoader summaryContextLoader;
 
     public DocumentationOrchestrationService(List<AgentStrategy> strategies,
                                              ModuleTreeRepository moduleTreeRepository,
                                              ModuleExecutionContextFactory contextFactory,
                                              DocumentationPersistenceService persistenceService,
-                                             AgentProperties agentProperties) {
+                                             AgentProperties agentProperties,
+                                             ModuleSummaryContextLoader summaryContextLoader) {
         this.strategies = strategies;
         this.moduleTreeRepository = moduleTreeRepository;
         this.contextFactory = contextFactory;
         this.persistenceService = persistenceService;
         this.agentProperties = agentProperties;
+        this.summaryContextLoader = summaryContextLoader;
     }
 
     public Map<String, Object> processModule(ModuleTask task) {
@@ -69,6 +74,7 @@ public class DocumentationOrchestrationService {
             return context.getModuleTreeManager().getReadOnlySnapshot();
         }
 
+        context = enrichWithSummaryContext(context);
         AgentStrategy strategy = selectStrategy(context);
         AgentExecutionResult result = executeWithFallback(strategy, context);
         ModuleTask task = new ModuleTask(
@@ -85,6 +91,14 @@ public class DocumentationOrchestrationService {
 
         persistenceService.persist(task, context, result, context.getModuleTreeManager());
         return context.getModuleTreeManager().getReadOnlySnapshot();
+    }
+
+    private ModuleExecutionContext enrichWithSummaryContext(ModuleExecutionContext context) {
+        if (context.getSummaryContext() != null) {
+            return context;
+        }
+        ModuleSummaryContext summaryContext = summaryContextLoader.load(context);
+        return context.withSummaryContext(summaryContext);
     }
 
     private AgentStrategy selectStrategy(ModuleExecutionContext context) {

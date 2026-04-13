@@ -36,8 +36,8 @@ public class ModuleSummaryContext {
         Map<String, ClassSummaryRecord> cMap = new LinkedHashMap<String, ClassSummaryRecord>();
         if (classSummaries != null) {
             for (ClassSummaryRecord r : classSummaries) {
-                if (r != null && r.getClassName() != null) {
-                    cMap.put(r.getClassName(), r);
+                if (r != null && r.getComponentId() != null) {
+                    cMap.put(r.getComponentId(), r);
                 }
             }
         }
@@ -51,10 +51,10 @@ public class ModuleSummaryContext {
 
         Map<String, List<MethodSummaryRecord>> mbc = new LinkedHashMap<String, List<MethodSummaryRecord>>();
         for (MethodSummaryRecord r : mList) {
-            if (r == null || r.getClassName() == null) {
+            if (r == null || r.getComponentId() == null) {
                 continue;
             }
-            mbc.computeIfAbsent(r.getClassName(), k -> new ArrayList<MethodSummaryRecord>()).add(r);
+            mbc.computeIfAbsent(r.getComponentId(), k -> new ArrayList<MethodSummaryRecord>()).add(r);
         }
         for (Map.Entry<String, List<MethodSummaryRecord>> e : mbc.entrySet()) {
             e.setValue(Collections.unmodifiableList(e.getValue()));

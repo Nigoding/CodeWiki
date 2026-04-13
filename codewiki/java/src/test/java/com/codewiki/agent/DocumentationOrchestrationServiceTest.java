@@ -3,9 +3,12 @@ package com.codewiki.agent;
 import com.codewiki.agent.strategy.AgentStrategy;
 import com.codewiki.config.AgentProperties;
 import com.codewiki.context.ModuleExecutionContext;
+import com.codewiki.context.ModuleExecutionContextFactory;
 import com.codewiki.domain.Node;
 import com.codewiki.exception.DocumentationGenerationException;
 import com.codewiki.repository.ModuleTreeRepository;
+import com.codewiki.service.DocumentationPersistenceService;
+import com.codewiki.summary.ModuleSummaryContextLoader;
 import com.codewiki.tree.ModuleTreeManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +47,9 @@ class DocumentationOrchestrationServiceTest {
     @Mock private AgentStrategy complexStrategy;
     @Mock private AgentStrategy leafStrategy;
     @Mock private ModuleTreeRepository moduleTreeRepository;
+    @Mock private ModuleExecutionContextFactory contextFactory;
+    @Mock private DocumentationPersistenceService persistenceService;
+    @Mock private ModuleSummaryContextLoader summaryContextLoader;
 
     private ModuleTreeManager moduleTreeManager;
     private AgentProperties agentProperties;
@@ -61,7 +67,10 @@ class DocumentationOrchestrationServiceTest {
         orchestrator = new DocumentationOrchestrationService(
                 Arrays.asList(complexStrategy, leafStrategy),
                 moduleTreeRepository,
-                agentProperties);
+                contextFactory,
+                persistenceService,
+                agentProperties,
+                summaryContextLoader);
     }
 
     // ── strategy selection ────────────────────────────────────────────────────

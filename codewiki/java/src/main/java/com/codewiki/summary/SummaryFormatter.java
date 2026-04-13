@@ -16,8 +16,10 @@ public class SummaryFormatter {
 
     public String formatClassSummary(ClassSummaryRecord record) {
         StringBuilder sb = new StringBuilder();
-        sb.append(record.getClassName())
-                .append(" [").append(record.getRelativePath()).append("]");
+        sb.append(record.getClassName());
+        if (Texts.trimToEmpty(record.getRelativePath()).length() > 0) {
+            sb.append(" [").append(Texts.trimToEmpty(record.getRelativePath())).append("]");
+        }
         if (Texts.trimToEmpty(record.getRole()).length() > 0) {
             sb.append(": role=").append(Texts.trimToEmpty(record.getRole()));
         }
