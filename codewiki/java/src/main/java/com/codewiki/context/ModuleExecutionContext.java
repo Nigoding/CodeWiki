@@ -1,6 +1,7 @@
 package com.codewiki.context;
 
 import com.codewiki.domain.Node;
+import com.codewiki.summary.ModuleSummaryContext;
 import com.codewiki.tree.ModuleTreeManager;
 
 import java.util.ArrayList;
@@ -23,6 +24,7 @@ public class ModuleExecutionContext {
     private final int currentDepth;
     private final String customInstructions;
     private final ModuleTreeManager moduleTreeManager;
+    private final ModuleSummaryContext summaryContext;
 
     private ModuleExecutionContext(Builder builder) {
         this.moduleName = builder.moduleName;
@@ -35,6 +37,7 @@ public class ModuleExecutionContext {
         this.currentDepth = builder.currentDepth;
         this.customInstructions = builder.customInstructions;
         this.moduleTreeManager = builder.moduleTreeManager;
+        this.summaryContext = builder.summaryContext;
     }
 
     public static Builder builder() {
@@ -64,6 +67,22 @@ public class ModuleExecutionContext {
         return this.currentDepth >= this.maxDepth;
     }
 
+    public ModuleExecutionContext withSummaryContext(ModuleSummaryContext summaryContext) {
+        return builder()
+                .moduleName(this.moduleName)
+                .components(this.components)
+                .coreComponentIds(this.coreComponentIds)
+                .modulePath(this.modulePath)
+                .absoluteDocsPath(this.absoluteDocsPath)
+                .absoluteRepoPath(this.absoluteRepoPath)
+                .maxDepth(this.maxDepth)
+                .currentDepth(this.currentDepth)
+                .customInstructions(this.customInstructions)
+                .moduleTreeManager(this.moduleTreeManager)
+                .summaryContext(summaryContext)
+                .build();
+    }
+
     public String getModuleName() { return moduleName; }
     public Map<String, Node> getComponents() { return components; }
     public List<String> getCoreComponentIds() { return coreComponentIds; }
@@ -74,6 +93,7 @@ public class ModuleExecutionContext {
     public int getCurrentDepth() { return currentDepth; }
     public String getCustomInstructions() { return customInstructions; }
     public ModuleTreeManager getModuleTreeManager() { return moduleTreeManager; }
+    public ModuleSummaryContext getSummaryContext() { return summaryContext; }
 
     public static final class Builder {
         private String moduleName;
@@ -86,6 +106,7 @@ public class ModuleExecutionContext {
         private int currentDepth = 1;
         private String customInstructions;
         private ModuleTreeManager moduleTreeManager;
+        private ModuleSummaryContext summaryContext;
 
         private Builder() {
         }
@@ -100,6 +121,7 @@ public class ModuleExecutionContext {
         public Builder currentDepth(int v) { this.currentDepth = v; return this; }
         public Builder customInstructions(String v) { this.customInstructions = v; return this; }
         public Builder moduleTreeManager(ModuleTreeManager v) { this.moduleTreeManager = v; return this; }
+        public Builder summaryContext(ModuleSummaryContext v) { this.summaryContext = v; return this; }
 
         public ModuleExecutionContext build() {
             if (moduleName == null) throw new IllegalStateException("moduleName is required");

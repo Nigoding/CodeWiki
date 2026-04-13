@@ -4,7 +4,9 @@ import com.codewiki.config.PromptContextProperties;
 import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.domain.Node;
 import com.codewiki.summary.ModuleBriefBuilder;
-import com.codewiki.summary.SummaryQueryService;
+import com.codewiki.summary.ModuleSummaryContext;
+import com.codewiki.summary.ModuleSummaryContextLoader;
+import com.codewiki.summary.SummaryFormatter;
 import com.codewiki.summary.dto.ClassSummaryRecord;
 import com.codewiki.summary.dto.MethodSummaryRecord;
 import com.codewiki.summary.dto.ModuleBrief;
@@ -73,18 +75,21 @@ public class PromptBuilderService {
     private Resource userPromptTemplate;
 
     private final TokenCounter tokenCounter;
-    private final SummaryQueryService summaryQueryService;
+    private final ModuleSummaryContextLoader summaryContextLoader;
     private final ModuleBriefBuilder moduleBriefBuilder;
     private final PromptContextProperties promptContextProperties;
+    private final SummaryFormatter summaryFormatter;
 
     public PromptBuilderService(TokenCounter tokenCounter,
-                                SummaryQueryService summaryQueryService,
+                                ModuleSummaryContextLoader summaryContextLoader,
                                 ModuleBriefBuilder moduleBriefBuilder,
-                                PromptContextProperties promptContextProperties) {
+                                PromptContextProperties promptContextProperties,
+                                SummaryFormatter summaryFormatter) {
         this.tokenCounter = tokenCounter;
-        this.summaryQueryService = summaryQueryService;
+        this.summaryContextLoader = summaryContextLoader;
         this.moduleBriefBuilder = moduleBriefBuilder;
         this.promptContextProperties = promptContextProperties;
+        this.summaryFormatter = summaryFormatter;
     }
 
     // ── public API ────────────────────────────────────────────────────────────
@@ -304,58 +309,21 @@ public class PromptBuilderService {
             return "";
         }
 
-        String projectName = deriveProjectName(ctx);
-        List<String> classFqns = collectClassFqns(ctx);
-        List<ClassSummaryRecord> classes =
-                summaryQueryService.findClassSummaries(projectName, classFqns);
-        List<String> methodFqns = collectMethodFqns(ctx);
-        List<MethodSummaryRecord> methods = !methodFqns.isEmpty()
-                ? summaryQueryService.findMethodSummariesByFqns(projectName, methodFqns)
-                : summaryQueryService.findMethodSummaries(projectName, classFqns);
-
-        StringBuilder sb = new StringBuilder();
-        if (!classes.isEmpty()) {
-            sb.append("Class summaries:\n");
-            int classLimit = Math.min(promptContextProperties.getMaxClassSummaries(), classes.size());
-            for (int i = 0; i < classLimit; i++) {
-                ClassSummaryRecord c = classes.get(i);
-                sb.append("- ").append(c.getClassName())
-                        .append(" [").append(c.getRelativePath()).append("]");
-                if (Texts.trimToEmpty(c.getRole()).length() > 0) {
-                    sb.append(": role=").append(Texts.trimToEmpty(c.getRole()));
-                }
-                if (Texts.trimToEmpty(c.getKeyFunctionality()).length() > 0) {
-                    sb.append("; functionality=").append(Texts.trimToEmpty(c.getKeyFunctionality()));
-                }
-                if (Texts.trimToEmpty(c.getPurpose()).length() > 0) {
-                    sb.append("; purpose=").append(Texts.trimToEmpty(c.getPurpose()));
-                }
-                sb.append("\n");
-            }
+        ModuleSummaryContext summaryCtx = ctx.getSummaryContext();
+        if (summaryCtx == null) {
+            summaryCtx = summaryContextLoader.load(ctx);
         }
 
-        if (!methods.isEmpty()) {
-            sb.append("Method summaries:\n");
-            int methodLimit = Math.min(promptContextProperties.getMaxMethodSummaries(), methods.size());
-            for (int i = 0; i < methodLimit; i++) {
-                MethodSummaryRecord m = methods.get(i);
-                sb.append("- ").append(m.getClassName())
-                        .append("#").append(m.getMethodName())
-                        .append(": ").append(Texts.trimToEmpty(m.getSummary()));
-                if (!m.getInputs().isEmpty()) {
-                    sb.append(" Inputs=").append(String.join(", ", m.getInputs()));
-                }
-                if (Texts.trimToEmpty(m.getOutputs()).length() > 0) {
-                    sb.append(" Outputs=").append(Texts.trimToEmpty(m.getOutputs()));
-                }
-                if (!m.getSideEffects().isEmpty()) {
-                    sb.append(" SideEffects=").append(String.join(", ", m.getSideEffects()));
-                }
-                if (Texts.trimToEmpty(m.getDataFlow()).length() > 0) {
-                    sb.append(" DataFlow=").append(Texts.trimToEmpty(m.getDataFlow()));
-                }
-                sb.append("\n");
-            }
+        StringBuilder sb = new StringBuilder();
+        String classSummaries = summaryFormatter.formatClassSummaries(
+                summaryCtx.getClassSummaries(), promptContextProperties.getMaxClassSummaries());
+        if (!classSummaries.isEmpty()) {
+            sb.append(classSummaries).append("\n");
+        }
+        String methodSummaries = summaryFormatter.formatMethodSummaries(
+                summaryCtx.getMethodSummaries(), promptContextProperties.getMaxMethodSummaries());
+        if (!methodSummaries.isEmpty()) {
+            sb.append(methodSummaries).append("\n");
         }
         return sb.toString().trim();
     }
@@ -381,34 +349,4 @@ public class PromptBuilderService {
         return text.substring(0, maxChars) + "\n// [truncated source context]";
     }
 
-    private List<String> collectClassFqns(ModuleExecutionContext ctx) {
-        Set<String> values = new LinkedHashSet<String>();
-        for (String componentId : ctx.getCoreComponentIds()) {
-            Node node = ctx.getComponents().get(componentId);
-            if (node != null && Texts.trimToEmpty(node.getClassFqn()).length() > 0) {
-                values.add(Texts.trimToEmpty(node.getClassFqn()));
-            }
-        }
-        return new ArrayList<String>(values);
-    }
-
-    private List<String> collectMethodFqns(ModuleExecutionContext ctx) {
-        Set<String> values = new LinkedHashSet<String>();
-        for (String componentId : ctx.getCoreComponentIds()) {
-            Node node = ctx.getComponents().get(componentId);
-            if (node != null && node.getMethodFqns() != null) {
-                values.addAll(node.getMethodFqns());
-            }
-        }
-        return new ArrayList<String>(values);
-    }
-
-    private String deriveProjectName(ModuleExecutionContext ctx) {
-        String repoPath = ctx.getAbsoluteRepoPath();
-        if (repoPath == null || repoPath.isEmpty()) {
-            return ctx.getModuleName();
-        }
-        int normalized = Math.max(repoPath.lastIndexOf('/'), repoPath.lastIndexOf('\\'));
-        return normalized < 0 ? repoPath : repoPath.substring(normalized + 1);
-    }
 }

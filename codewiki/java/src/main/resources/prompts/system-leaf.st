@@ -25,5 +25,6 @@ Generate documentation following the following requirements:
 <AVAILABLE_TOOLS>
 - `str_replace_editor`: File system operations for creating and editing documentation files
 - `read_code_components`: Explore additional code dependencies not included in the provided components
+- `recall_summary`: Retrieve stored package/class/method summaries for the current module to enrich documentation context
 </AVAILABLE_TOOLS>
 {custom_instructions}

@@ -18,22 +18,25 @@ import java.util.Set;
 @Component
 public class DefaultModuleBriefBuilder implements ModuleBriefBuilder {
 
-    private final SummaryQueryService summaryQueryService;
+    private final ModuleSummaryContextLoader summaryContextLoader;
+    private final SummaryFormatter summaryFormatter;
 
-    public DefaultModuleBriefBuilder(SummaryQueryService summaryQueryService) {
-        this.summaryQueryService = summaryQueryService;
+    public DefaultModuleBriefBuilder(ModuleSummaryContextLoader summaryContextLoader,
+                                     SummaryFormatter summaryFormatter) {
+        this.summaryContextLoader = summaryContextLoader;
+        this.summaryFormatter = summaryFormatter;
     }
 
     @Override
     public ModuleBrief build(ModuleExecutionContext ctx) {
-        String projectName = deriveProjectName(ctx);
-        List<String> classFqns = collectClassFqns(ctx);
-        List<PackageSummaryRecord> packageRecords =
-                summaryQueryService.findPackageSummaries(projectName, collectPackageFqns(ctx));
-        List<ClassSummaryRecord> classRecords =
-                summaryQueryService.findClassSummaries(projectName, classFqns);
-        List<MethodSummaryRecord> methodRecords =
-                resolveMethodSummaries(projectName, ctx);
+        ModuleSummaryContext summaryCtx = ctx.getSummaryContext();
+        if (summaryCtx == null) {
+            summaryCtx = summaryContextLoader.load(ctx);
+        }
+
+        List<PackageSummaryRecord> packageRecords = summaryCtx.getPackageSummaries();
+        List<ClassSummaryRecord> classRecords = summaryCtx.getClassSummaries();
+        List<MethodSummaryRecord> methodRecords = summaryCtx.getMethodSummaries();
 
         boolean summaryBacked = !packageRecords.isEmpty() || !classRecords.isEmpty() || !methodRecords.isEmpty();
         List<PackageSummary> packageSummaries = extractPackageSummaries(packageRecords);
@@ -41,13 +44,13 @@ public class DefaultModuleBriefBuilder implements ModuleBriefBuilder {
         List<String> keyClassSummaries = new ArrayList<String>();
         for (int i = 0; i < Math.min(5, classRecords.size()); i++) {
             ClassSummaryRecord record = classRecords.get(i);
-            keyClassSummaries.add(formatClassSummary(record));
+            keyClassSummaries.add(summaryFormatter.formatClassSummary(record));
         }
 
         List<String> keyMethodSummaries = new ArrayList<String>();
         for (int i = 0; i < Math.min(8, methodRecords.size()); i++) {
             MethodSummaryRecord record = methodRecords.get(i);
-            keyMethodSummaries.add(formatMethodSummary(record));
+            keyMethodSummaries.add(summaryFormatter.formatMethodSummary(record));
         }
 
         Set<String> dependencySet = new LinkedHashSet<String>();
@@ -140,73 +143,6 @@ public class DefaultModuleBriefBuilder implements ModuleBriefBuilder {
         return String.join(" | ", values);
     }
 
-    private String formatClassSummary(ClassSummaryRecord record) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(record.getClassName())
-                .append(" (").append(record.getRelativePath()).append(")");
-        if (Texts.trimToEmpty(record.getRole()).length() > 0) {
-            sb.append(": role=").append(Texts.trimToEmpty(record.getRole()));
-        }
-        if (Texts.trimToEmpty(record.getKeyFunctionality()).length() > 0) {
-            sb.append("; functionality=").append(Texts.trimToEmpty(record.getKeyFunctionality()));
-        }
-        if (Texts.trimToEmpty(record.getPurpose()).length() > 0) {
-            sb.append("; purpose=").append(Texts.trimToEmpty(record.getPurpose()));
-        }
-        return sb.toString();
-    }
-
-    private String formatMethodSummary(MethodSummaryRecord record) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(record.getClassName()).append("#").append(record.getMethodName())
-                .append(": ").append(Texts.trimToEmpty(record.getSummary()));
-        if (!record.getSideEffects().isEmpty()) {
-            sb.append(" Side effects: ").append(String.join(", ", record.getSideEffects()));
-        }
-        return sb.toString();
-    }
-
-    private List<MethodSummaryRecord> resolveMethodSummaries(String projectName, ModuleExecutionContext ctx) {
-        List<String> methodFqns = collectMethodFqns(ctx);
-        if (!methodFqns.isEmpty()) {
-            return summaryQueryService.findMethodSummariesByFqns(projectName, methodFqns);
-        }
-        return summaryQueryService.findMethodSummaries(projectName, collectClassFqns(ctx));
-    }
-
-    private List<String> collectClassFqns(ModuleExecutionContext ctx) {
-        Set<String> values = new LinkedHashSet<String>();
-        for (String componentId : ctx.getCoreComponentIds()) {
-            Node node = ctx.getComponents().get(componentId);
-            if (node != null && Texts.trimToEmpty(node.getClassFqn()).length() > 0) {
-                values.add(Texts.trimToEmpty(node.getClassFqn()));
-            }
-        }
-        return new ArrayList<String>(values);
-    }
-
-    private List<String> collectMethodFqns(ModuleExecutionContext ctx) {
-        Set<String> values = new LinkedHashSet<String>();
-        for (String componentId : ctx.getCoreComponentIds()) {
-            Node node = ctx.getComponents().get(componentId);
-            if (node != null && node.getMethodFqns() != null) {
-                values.addAll(node.getMethodFqns());
-            }
-        }
-        return new ArrayList<String>(values);
-    }
-
-    private List<String> collectPackageFqns(ModuleExecutionContext ctx) {
-        Set<String> values = new LinkedHashSet<String>();
-        for (String componentId : ctx.getCoreComponentIds()) {
-            Node node = ctx.getComponents().get(componentId);
-            if (node != null && node.getPackageFqns() != null) {
-                values.addAll(node.getPackageFqns());
-            }
-        }
-        return new ArrayList<String>(values);
-    }
-
     private List<PackageSummary> extractPackageSummaries(List<PackageSummaryRecord> packageRecords) {
         List<PackageSummary> results = new ArrayList<PackageSummary>();
         for (PackageSummaryRecord record : packageRecords) {
@@ -217,12 +153,4 @@ public class DefaultModuleBriefBuilder implements ModuleBriefBuilder {
         return results;
     }
 
-    private String deriveProjectName(ModuleExecutionContext ctx) {
-        String repoPath = ctx.getAbsoluteRepoPath();
-        if (repoPath == null || repoPath.isEmpty()) {
-            return ctx.getModuleName();
-        }
-        int normalized = Math.max(repoPath.lastIndexOf('/'), repoPath.lastIndexOf('\\'));
-        return normalized < 0 ? repoPath : repoPath.substring(normalized + 1);
-    }
 }

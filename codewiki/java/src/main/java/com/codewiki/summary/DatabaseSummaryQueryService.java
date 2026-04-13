@@ -16,6 +16,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class DatabaseSummaryQueryService implements SummaryQueryService {
@@ -57,11 +59,34 @@ public class DatabaseSummaryQueryService implements SummaryQueryService {
             return Collections.emptyList();
         }
 
+        List<String> hashes = componentIds.stream()
+                .map(SummaryElementNames::md5)
+                .distinct()
+                .collect(Collectors.toList());
+        List<SummaryEntity> entities = summaryMapper.selectList(
+                new LambdaQueryWrapper<SummaryEntity>()
+                        .eq(SummaryEntity::getProjectName, projectName)
+                        .in(SummaryEntity::getElementNameHash, hashes)
+        );
+        if (entities == null || entities.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<String, SummaryEntity> entityMap = entities.stream()
+                .collect(Collectors.toMap(SummaryEntity::getElementNameHash, e -> e, (a, b) -> a));
         List<ClassSummaryRecord> results = new ArrayList<ClassSummaryRecord>();
         for (String componentId : componentIds) {
-            ClassSummaryRecord record = findClassSummary(projectName, componentId);
-            if (record != null) {
-                results.add(record);
+            SummaryEntity entity = entityMap.get(SummaryElementNames.md5(componentId));
+            if (entity != null) {
+                ClassSummary summary = parse(entity.getElementSummary(), ClassSummary.class);
+                results.add(new ClassSummaryRecord(
+                        componentId,
+                        projectName,
+                        null,
+                        SummaryElementNames.simpleClassName(componentId),
+                        summary,
+                        entity.getElementSummary()
+                ));
             }
         }
         return results;
@@ -98,11 +123,36 @@ public class DatabaseSummaryQueryService implements SummaryQueryService {
             return Collections.emptyList();
         }
 
+        List<String> hashes = methodFqns.stream()
+                .map(SummaryElementNames::md5)
+                .distinct()
+                .collect(Collectors.toList());
+        List<SummaryEntity> entities = summaryMapper.selectList(
+                new LambdaQueryWrapper<SummaryEntity>()
+                        .eq(SummaryEntity::getProjectName, projectName)
+                        .in(SummaryEntity::getElementNameHash, hashes)
+        );
+        if (entities == null || entities.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<String, SummaryEntity> entityMap = entities.stream()
+                .collect(Collectors.toMap(SummaryEntity::getElementNameHash, e -> e, (a, b) -> a));
         List<MethodSummaryRecord> results = new ArrayList<MethodSummaryRecord>();
         for (String methodFqn : methodFqns) {
-            MethodSummaryRecord record = findMethodSummaryByFqn(projectName, methodFqn);
-            if (record != null) {
-                results.add(record);
+            SummaryEntity entity = entityMap.get(SummaryElementNames.md5(methodFqn));
+            if (entity != null) {
+                MethodSummary summary = parse(entity.getElementSummary(), MethodSummary.class);
+                String ownerClass = extractOwnerClass(methodFqn);
+                results.add(new MethodSummaryRecord(
+                        entity.getElementName(),
+                        ownerClass,
+                        null,
+                        SummaryElementNames.simpleClassName(ownerClass),
+                        SummaryElementNames.extractMethodName(entity.getElementName()),
+                        summary,
+                        entity.getElementSummary()
+                ));
             }
         }
         return results;
@@ -142,9 +192,35 @@ public class DatabaseSummaryQueryService implements SummaryQueryService {
             return Collections.emptyList();
         }
 
+        LambdaQueryWrapper<SummaryEntity> wrapper = new LambdaQueryWrapper<SummaryEntity>()
+                .eq(SummaryEntity::getProjectName, projectName);
+        for (int i = 0; i < componentIds.size(); i++) {
+            String prefix = SummaryElementNames.toMethodPrefix(componentIds.get(i));
+            if (i == 0) {
+                wrapper.likeRight(SummaryEntity::getElementName, prefix);
+            } else {
+                wrapper.or().likeRight(SummaryEntity::getElementName, prefix);
+            }
+        }
+
+        List<SummaryEntity> entities = summaryMapper.selectList(wrapper);
+        if (entities == null || entities.isEmpty()) {
+            return Collections.emptyList();
+        }
+
         List<MethodSummaryRecord> results = new ArrayList<MethodSummaryRecord>();
-        for (String componentId : componentIds) {
-            results.addAll(findMethodSummariesByClass(projectName, componentId));
+        for (SummaryEntity entity : entities) {
+            MethodSummary summary = parse(entity.getElementSummary(), MethodSummary.class);
+            String ownerClass = extractOwnerClass(entity.getElementName());
+            results.add(new MethodSummaryRecord(
+                    entity.getElementName(),
+                    ownerClass,
+                    null,
+                    SummaryElementNames.simpleClassName(ownerClass),
+                    SummaryElementNames.extractMethodName(entity.getElementName()),
+                    summary,
+                    entity.getElementSummary()
+            ));
         }
         return results;
     }
@@ -203,11 +279,27 @@ public class DatabaseSummaryQueryService implements SummaryQueryService {
             return Collections.emptyList();
         }
 
+        List<String> hashes = packageFqns.stream()
+                .map(SummaryElementNames::md5)
+                .distinct()
+                .collect(Collectors.toList());
+        List<SummaryEntity> entities = summaryMapper.selectList(
+                new LambdaQueryWrapper<SummaryEntity>()
+                        .eq(SummaryEntity::getProjectName, projectName)
+                        .in(SummaryEntity::getElementNameHash, hashes)
+        );
+        if (entities == null || entities.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<String, SummaryEntity> entityMap = entities.stream()
+                .collect(Collectors.toMap(SummaryEntity::getElementNameHash, e -> e, (a, b) -> a));
         List<PackageSummaryRecord> results = new ArrayList<PackageSummaryRecord>();
         for (String packageFqn : packageFqns) {
-            PackageSummaryRecord record = findPackageSummary(projectName, packageFqn);
-            if (record != null) {
-                results.add(record);
+            SummaryEntity entity = entityMap.get(SummaryElementNames.md5(packageFqn));
+            if (entity != null) {
+                PackageSummary summary = parse(entity.getElementSummary(), PackageSummary.class);
+                results.add(new PackageSummaryRecord(projectName, packageFqn, summary));
             }
         }
         return results;
