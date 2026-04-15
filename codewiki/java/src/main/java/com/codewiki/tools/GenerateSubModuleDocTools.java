@@ -54,7 +54,6 @@ public class GenerateSubModuleDocTools {
             ToolContext toolContext) {
 
         ModuleExecutionContext parentContext = ReadCodeComponentsTools.extractContext(toolContext);
-
         if (parentContext.hasReachedMaxDepth()) {
             log.warn("[{}] Max depth {} reached, sub-agent delegation skipped for {}",
                     parentContext.getModuleName(), parentContext.getMaxDepth(), subModuleSpecs.keySet());

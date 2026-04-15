@@ -52,6 +52,56 @@ public class SummaryFormatter {
         return sb.toString();
     }
 
+    public String formatClassSummaryBrief(ClassSummaryRecord record) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(record.getClassName());
+        if (Texts.trimToEmpty(record.getRole()).length() > 0) {
+            sb.append(": ").append(Texts.trimToEmpty(record.getRole()));
+        }
+        if (Texts.trimToEmpty(record.getPurpose()).length() > 0) {
+            sb.append("; purpose=").append(Texts.trimToEmpty(record.getPurpose()));
+        }
+        return sb.toString();
+    }
+
+    public String formatMethodSummaryBrief(MethodSummaryRecord record) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(record.getClassName())
+                .append("#")
+                .append(record.getMethodName())
+                .append(": ")
+                .append(Texts.trimToEmpty(record.getSummary()));
+        if (!record.getSideEffects().isEmpty()) {
+            int limit = Math.min(2, record.getSideEffects().size());
+            sb.append("; side effects=")
+                    .append(String.join(", ", record.getSideEffects().subList(0, limit)));
+        }
+        return sb.toString();
+    }
+
+    public String formatCoreComponentSummary(ClassSummaryRecord classRecord,
+                                             List<MethodSummaryRecord> representativeMethods) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("- Component: ").append(classRecord.getClassName()).append("\n");
+        if (Texts.trimToEmpty(classRecord.getRole()).length() > 0) {
+            sb.append("  Role: ").append(Texts.trimToEmpty(classRecord.getRole())).append("\n");
+        }
+        if (Texts.trimToEmpty(classRecord.getPurpose()).length() > 0) {
+            sb.append("  Purpose: ").append(Texts.trimToEmpty(classRecord.getPurpose())).append("\n");
+        }
+        if (Texts.trimToEmpty(classRecord.getKeyFunctionality()).length() > 0) {
+            sb.append("  Key behavior: ").append(Texts.trimToEmpty(classRecord.getKeyFunctionality())).append("\n");
+        }
+        if (representativeMethods != null && !representativeMethods.isEmpty()) {
+            sb.append("  Representative methods:\n");
+            int limit = Math.min(2, representativeMethods.size());
+            for (int i = 0; i < limit; i++) {
+                sb.append("    - ").append(formatMethodSummaryBrief(representativeMethods.get(i))).append("\n");
+            }
+        }
+        return sb.toString().trim();
+    }
+
     public String formatPackageSummary(PackageSummaryRecord record) {
         if (record == null || record.getPackageSummary() == null) {
             return "";

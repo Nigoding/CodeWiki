@@ -20,11 +20,9 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Builds the system and user prompts that are sent to the LLM.
@@ -108,11 +106,10 @@ public class PromptBuilderService {
         ModuleBrief brief = moduleBriefBuilder.build(ctx);
         Map<String, Object> vars = new HashMap<>();
         vars.put("module_name", ctx.getModuleName());
-        vars.put("module_tree", formatModuleTree(
-                ctx.getModuleTreeManager().getReadOnlySnapshot(),
-                ctx.getModuleName()));
+        vars.put("module_context", renderModuleContext(ctx));
         vars.put("module_brief", renderModuleBrief(brief));
-        vars.put("key_summaries", renderKeySummaries(ctx));
+        vars.put("core_component_summaries", renderCoreComponentSummaries(ctx));
+        vars.put("context_gaps", renderContextGaps(ctx, brief));
         vars.put("core_components", buildFallbackSourceContext(ctx, brief));
         return new PromptTemplate(userPromptTemplate).render(vars);
     }
@@ -124,7 +121,10 @@ public class PromptBuilderService {
     public int countCoreComponentTokens(ModuleExecutionContext ctx) {
         ModuleBrief brief = moduleBriefBuilder.build(ctx);
         if (promptContextProperties.isPreferSummaryContext() && brief.isSummaryBacked()) {
-            return tokenCounter.count(renderModuleBrief(brief)) + tokenCounter.count(renderKeySummaries(ctx));
+            return tokenCounter.count(renderModuleContext(ctx))
+                    + tokenCounter.count(renderModuleBrief(brief))
+                    + tokenCounter.count(renderCoreComponentSummaries(ctx))
+                    + tokenCounter.count(renderContextGaps(ctx, brief));
         }
         return tokenCounter.count(formatCoreComponentsWithinTokenBudget(
                 ctx,
@@ -268,30 +268,48 @@ public class PromptBuilderService {
         return sb.toString();
     }
 
+    private String renderModuleContext(ModuleExecutionContext ctx) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("- Module: ").append(ctx.getModuleName()).append("\n");
+        List<String> coreNames = collectCoreComponentNames(ctx);
+        if (!coreNames.isEmpty()) {
+            sb.append("- Core components: ").append(String.join(", ", coreNames)).append("\n");
+        }
+        sb.append("- Module tree:\n")
+                .append(formatModuleTree(ctx.getModuleTreeManager().getReadOnlySnapshot(), ctx.getModuleName()));
+        return sb.toString().trim();
+    }
+
     private String renderModuleBrief(ModuleBrief brief) {
         StringBuilder sb = new StringBuilder();
-        sb.append("- Purpose: ").append(brief.getPurpose()).append("\n");
+        sb.append("- Module purpose: ").append(brief.getModulePurpose()).append("\n");
 
-        if (Texts.trimToEmpty(brief.getCoreBusinessFunction()).length() > 0) {
-            sb.append("- Core business function: ").append(brief.getCoreBusinessFunction()).append("\n");
+        if (Texts.trimToEmpty(brief.getBusinessValue()).length() > 0) {
+            sb.append("- Business value: ").append(brief.getBusinessValue()).append("\n");
         }
 
-        if (!brief.getBusinessFlows().isEmpty()) {
-            sb.append("- Business flows:\n");
-            for (String flow : brief.getBusinessFlows()) {
-                sb.append("  - ").append(flow).append("\n");
+        if (!brief.getMainResponsibilities().isEmpty()) {
+            sb.append("- Main responsibilities:\n");
+            for (String responsibility : brief.getMainResponsibilities()) {
+                sb.append("  - ").append(responsibility).append("\n");
             }
         }
 
-        if (!brief.getKeyBusinessEntities().isEmpty()) {
-            sb.append("- Key business entities: ")
-                    .append(String.join(", ", brief.getKeyBusinessEntities()))
+        if (!brief.getKeyComponents().isEmpty()) {
+            sb.append("- Key components: ")
+                    .append(String.join(", ", brief.getKeyComponents()))
                     .append("\n");
         }
 
-        if (!brief.getDependencies().isEmpty()) {
-            sb.append("- Operational side effects / dependencies: ")
-                    .append(String.join(", ", brief.getDependencies()))
+        if (!brief.getMajorDependencies().isEmpty()) {
+            sb.append("- Major dependencies: ")
+                    .append(String.join(", ", brief.getMajorDependencies()))
+                    .append("\n");
+        }
+
+        if (!brief.getMajorSideEffects().isEmpty()) {
+            sb.append("- Major side effects: ")
+                    .append(String.join(", ", brief.getMajorSideEffects()))
                     .append("\n");
         }
 
@@ -304,26 +322,69 @@ public class PromptBuilderService {
         return sb.toString().trim();
     }
 
-    private String renderKeySummaries(ModuleExecutionContext ctx) {
+    private String renderCoreComponentSummaries(ModuleExecutionContext ctx) {
         if (!promptContextProperties.isPreferSummaryContext()) {
             return "";
         }
 
-        ModuleSummaryContext summaryCtx = ctx.getSummaryContext();
-        if (summaryCtx == null) {
-            summaryCtx = summaryContextLoader.load(ctx);
+        ModuleSummaryContext summaryCtx = resolveSummaryContext(ctx);
+
+        StringBuilder sb = new StringBuilder();
+        for (String componentId : ctx.getCoreComponentIds()) {
+            Node node = ctx.getComponents().get(componentId);
+            if (node == null) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append("\n");
+            }
+
+            ClassSummaryRecord classRecord = resolveClassSummary(node, summaryCtx);
+            if (classRecord != null) {
+                sb.append(summaryFormatter.formatCoreComponentSummary(
+                        classRecord,
+                        selectRepresentativeMethods(node, summaryCtx)));
+            } else {
+                sb.append("- Component: ")
+                        .append(Texts.trimToEmpty(node.getName()))
+                        .append("\n  Summary coverage: class summary missing; use recall_summary if this component becomes important.");
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    private String renderContextGaps(ModuleExecutionContext ctx, ModuleBrief brief) {
+        List<String> gaps = new ArrayList<String>();
+        for (String question : brief.getOpenQuestions()) {
+            String value = Texts.trimToEmpty(question);
+            if (!value.isEmpty()) {
+                gaps.add(value);
+            }
+        }
+
+        ModuleSummaryContext summaryCtx = resolveSummaryContext(ctx);
+        for (String componentId : ctx.getCoreComponentIds()) {
+            Node node = ctx.getComponents().get(componentId);
+            if (node == null) {
+                continue;
+            }
+            ClassSummaryRecord classRecord = resolveClassSummary(node, summaryCtx);
+            if (classRecord == null) {
+                gaps.add("No class summary is available for core component " + Texts.trimToEmpty(node.getName()) + ".");
+                continue;
+            }
+            if (selectRepresentativeMethods(node, summaryCtx).isEmpty()) {
+                gaps.add("Representative method behavior is missing for core component " + classRecord.getClassName() + ".");
+            }
+        }
+
+        if (gaps.isEmpty()) {
+            return "- Current summaries cover the main core components. Use recall_summary first if more detail is needed.";
         }
 
         StringBuilder sb = new StringBuilder();
-        String classSummaries = summaryFormatter.formatClassSummaries(
-                summaryCtx.getClassSummaries(), promptContextProperties.getMaxClassSummaries());
-        if (!classSummaries.isEmpty()) {
-            sb.append(classSummaries).append("\n");
-        }
-        String methodSummaries = summaryFormatter.formatMethodSummaries(
-                summaryCtx.getMethodSummaries(), promptContextProperties.getMaxMethodSummaries());
-        if (!methodSummaries.isEmpty()) {
-            sb.append(methodSummaries).append("\n");
+        for (String gap : gaps) {
+            sb.append("- ").append(gap).append("\n");
         }
         return sb.toString().trim();
     }
@@ -347,6 +408,46 @@ public class PromptBuilderService {
             return text;
         }
         return text.substring(0, maxChars) + "\n// [truncated source context]";
+    }
+
+    private ModuleSummaryContext resolveSummaryContext(ModuleExecutionContext ctx) {
+        ModuleSummaryContext summaryCtx = ctx.getSummaryContext();
+        if (summaryCtx == null) {
+            summaryCtx = summaryContextLoader.load(ctx);
+        }
+        return summaryCtx;
+    }
+
+    private List<String> collectCoreComponentNames(ModuleExecutionContext ctx) {
+        List<String> names = new ArrayList<String>();
+        for (String componentId : ctx.getCoreComponentIds()) {
+            Node node = ctx.getComponents().get(componentId);
+            if (node == null) {
+                continue;
+            }
+            String name = Texts.trimToEmpty(node.getName());
+            if (!name.isEmpty()) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
+    private ClassSummaryRecord resolveClassSummary(Node node, ModuleSummaryContext summaryCtx) {
+        String classFqn = Texts.trimToEmpty(node.getClassFqn());
+        return classFqn.isEmpty() ? null : summaryCtx.getClassSummary(classFqn);
+    }
+
+    private List<MethodSummaryRecord> selectRepresentativeMethods(Node node, ModuleSummaryContext summaryCtx) {
+        String classFqn = Texts.trimToEmpty(node.getClassFqn());
+        if (classFqn.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<MethodSummaryRecord> methods = summaryCtx.getMethodSummariesByClass(classFqn);
+        if (methods.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return methods.subList(0, Math.min(2, methods.size()));
     }
 
 }

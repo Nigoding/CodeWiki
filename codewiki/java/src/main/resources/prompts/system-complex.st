@@ -29,11 +29,14 @@ Generate documentation following this structure:
 </DOCUMENTATION_STRUCTURE>
 
 <WORKFLOW>
-1. Analyze the provided code components and module structure, explore the not given dependencies between the components if needed
-2. Create the main `{module_name}.md` file with overview and architecture in working directory
-3. Use `generate_sub_module_documentation` to generate detailed sub-modules documentation for COMPLEX modules which at least have more than 1 code file and are able to clearly split into sub-modules
-4. Include relevant Mermaid diagrams throughout the documentation
-5. After all sub-modules are documented, adjust `{module_name}.md` with ONLY ONE STEP to ensure all generated files including sub-modules documentation are properly cross-referred
+1. Analyze the provided code components and module structure
+2. Read the provided structured summaries first, and call `recall_summary` whenever package/class/method responsibilities, business context, or interaction details are not already clear from the prompt
+3. Explore additional source dependencies with `read_code_components` only when the summaries are insufficient or you need direct source evidence
+4. Before writing the final main markdown, decide whether the module can be cleanly decomposed into 2 or more sub-modules based on package boundaries, file boundaries, or clearly separated responsibilities
+5. If a clean split exists, call `generate_sub_module_documentation` exactly once with a non-empty sub-module map, wait for the sub-module files to be generated, and then write the main `{module_name}.md` file
+6. If no clean split exists, explain the module directly in `{module_name}.md` without forcing sub-modules
+7. Include relevant Mermaid diagrams throughout the documentation
+8. After all sub-modules are documented, adjust `{module_name}.md` with ONLY ONE STEP to ensure all generated files including sub-modules documentation are properly cross-referred
 </WORKFLOW>
 
 <AVAILABLE_TOOLS>
@@ -42,4 +45,12 @@ Generate documentation following this structure:
 - `generate_sub_module_documentation`: Generate detailed documentation for individual sub-modules via sub-agents
 - `recall_summary`: Retrieve stored package/class/method summaries for the current module to enrich documentation context
 </AVAILABLE_TOOLS>
+
+<TOOL_POLICY>
+- `recall_summary` is the default first tool for understanding structured package/class/method context.
+- Do not jump straight to file writing when key responsibilities, business flows, or method behavior are still unclear from the provided prompt content.
+- For complex modules handled by this prompt, do not skip `generate_sub_module_documentation` when the module clearly contains multiple cohesive sub-domains.
+- Use package boundaries, file boundaries, and responsibility grouping to construct the sub-module map for `generate_sub_module_documentation`.
+- Do not call `write_file` for the final main document until you have either generated the sub-module docs or explicitly decided that no clean split is possible.
+</TOOL_POLICY>
 {custom_instructions}

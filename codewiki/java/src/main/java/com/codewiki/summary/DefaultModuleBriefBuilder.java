@@ -11,6 +11,7 @@ import com.codewiki.util.Texts;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -19,20 +20,14 @@ import java.util.Set;
 public class DefaultModuleBriefBuilder implements ModuleBriefBuilder {
 
     private final ModuleSummaryContextLoader summaryContextLoader;
-    private final SummaryFormatter summaryFormatter;
 
-    public DefaultModuleBriefBuilder(ModuleSummaryContextLoader summaryContextLoader,
-                                     SummaryFormatter summaryFormatter) {
+    public DefaultModuleBriefBuilder(ModuleSummaryContextLoader summaryContextLoader) {
         this.summaryContextLoader = summaryContextLoader;
-        this.summaryFormatter = summaryFormatter;
     }
 
     @Override
     public ModuleBrief build(ModuleExecutionContext ctx) {
-        ModuleSummaryContext summaryCtx = ctx.getSummaryContext();
-        if (summaryCtx == null) {
-            summaryCtx = summaryContextLoader.load(ctx);
-        }
+        ModuleSummaryContext summaryCtx = resolveSummaryContext(ctx);
 
         List<PackageSummaryRecord> packageRecords = summaryCtx.getPackageSummaries();
         List<ClassSummaryRecord> classRecords = summaryCtx.getClassSummaries();
@@ -41,94 +36,50 @@ public class DefaultModuleBriefBuilder implements ModuleBriefBuilder {
         boolean summaryBacked = !packageRecords.isEmpty() || !classRecords.isEmpty() || !methodRecords.isEmpty();
         List<PackageSummary> packageSummaries = extractPackageSummaries(packageRecords);
 
-        List<String> keyClassSummaries = new ArrayList<String>();
-        for (int i = 0; i < Math.min(5, classRecords.size()); i++) {
-            ClassSummaryRecord record = classRecords.get(i);
-            keyClassSummaries.add(summaryFormatter.formatClassSummary(record));
-        }
-
-        List<String> keyMethodSummaries = new ArrayList<String>();
-        for (int i = 0; i < Math.min(8, methodRecords.size()); i++) {
-            MethodSummaryRecord record = methodRecords.get(i);
-            keyMethodSummaries.add(summaryFormatter.formatMethodSummary(record));
-        }
-
-        Set<String> dependencySet = new LinkedHashSet<String>();
-        for (MethodSummaryRecord record : methodRecords) {
-            dependencySet.addAll(record.getSideEffects());
-        }
-
-        List<String> openQuestions = new ArrayList<String>();
-        if (!summaryBacked) {
-            openQuestions.add("No structured summaries were found for this module. Inspect source when behavior details matter.");
-        }
-
         return new ModuleBrief(
                 ctx.getModuleName(),
-                inferPurpose(packageSummaries, classRecords, methodRecords),
-                aggregateCoreBusinessFunction(packageSummaries),
-                aggregateBusinessFlows(packageSummaries),
-                aggregateBusinessEntities(packageSummaries),
-                keyClassSummaries,
-                keyMethodSummaries,
-                new ArrayList<String>(dependencySet),
-                openQuestions,
+                inferModulePurpose(classRecords, methodRecords),
+                aggregateBusinessValue(packageSummaries),
+                aggregateMainResponsibilities(classRecords, methodRecords),
+                aggregateKeyComponents(ctx, classRecords),
+                aggregateMajorDependencies(methodRecords),
+                aggregateMajorSideEffects(methodRecords),
+                aggregateOpenQuestions(summaryBacked, classRecords, methodRecords),
                 summaryBacked
         );
     }
 
-    private String inferPurpose(List<PackageSummary> packageSummaries,
-                                List<ClassSummaryRecord> classRecords,
-                                List<MethodSummaryRecord> methodRecords) {
-        String packagePurpose = aggregateCoreBusinessFunction(packageSummaries);
-        if (packagePurpose.length() > 0) {
-            return packagePurpose;
+    private ModuleSummaryContext resolveSummaryContext(ModuleExecutionContext ctx) {
+        ModuleSummaryContext summaryCtx = ctx.getSummaryContext();
+        if (summaryCtx == null) {
+            summaryCtx = summaryContextLoader.load(ctx);
         }
-        if (!classRecords.isEmpty() && Texts.trimToEmpty(classRecords.get(0).getPurpose()).length() > 0) {
-            return Texts.trimToEmpty(classRecords.get(0).getPurpose());
-        }
-        if (!methodRecords.isEmpty() && Texts.trimToEmpty(methodRecords.get(0).getSummary()).length() > 0) {
-            return Texts.trimToEmpty(methodRecords.get(0).getSummary());
-        }
-        return "Purpose should be inferred from the module tree and source evidence.";
+        return summaryCtx;
     }
 
-    private List<String> aggregateBusinessFlows(List<PackageSummary> packageSummaries) {
-        List<String> flows = new ArrayList<String>();
+    private String inferModulePurpose(List<ClassSummaryRecord> classRecords,
+                                      List<MethodSummaryRecord> methodRecords) {
+        List<String> hints = new ArrayList<String>();
         Set<String> seen = new LinkedHashSet<String>();
-        for (PackageSummary packageSummary : packageSummaries) {
-            if (packageSummary == null || packageSummary.getBusinessFlows() == null) {
-                continue;
-            }
-            for (PackageSummary.BusinessFlow flow : packageSummary.getBusinessFlows()) {
-                StringBuilder sb = new StringBuilder();
-                sb.append(Texts.trimToEmpty(flow.getFlowName()));
-                if (Texts.trimToEmpty(flow.getDescription()).length() > 0) {
-                    sb.append(": ").append(Texts.trimToEmpty(flow.getDescription()));
-                }
-                if (flow.getSteps() != null && !flow.getSteps().isEmpty()) {
-                    sb.append(" Steps: ").append(String.join(" -> ", flow.getSteps()));
-                }
-                String value = sb.toString();
-                if (!value.isEmpty() && seen.add(value)) {
-                    flows.add(value);
-                }
+        for (ClassSummaryRecord record : classRecords) {
+            addIfPresent(hints, seen, record.getPurpose(), 2);
+            addIfPresent(hints, seen, record.getKeyFunctionality(), 2);
+            if (hints.size() >= 2) {
+                return String.join(" ", hints);
             }
         }
-        return flows;
-    }
-
-    private List<String> aggregateBusinessEntities(List<PackageSummary> packageSummaries) {
-        Set<String> entities = new LinkedHashSet<String>();
-        for (PackageSummary packageSummary : packageSummaries) {
-            if (packageSummary != null && packageSummary.getKeyBusinessEntities() != null) {
-                entities.addAll(packageSummary.getKeyBusinessEntities());
+        for (MethodSummaryRecord record : methodRecords) {
+            addIfPresent(hints, seen, record.getSummary(), 2);
+            if (hints.size() >= 2) {
+                break;
             }
         }
-        return new ArrayList<String>(entities);
+        return hints.isEmpty()
+                ? "Module purpose should be inferred from the module tree and source evidence."
+                : String.join(" ", hints);
     }
 
-    private String aggregateCoreBusinessFunction(List<PackageSummary> packageSummaries) {
+    private String aggregateBusinessValue(List<PackageSummary> packageSummaries) {
         List<String> values = new ArrayList<String>();
         Set<String> seen = new LinkedHashSet<String>();
         for (PackageSummary packageSummary : packageSummaries) {
@@ -137,10 +88,86 @@ public class DefaultModuleBriefBuilder implements ModuleBriefBuilder {
                 values.add(value);
             }
         }
-        if (values.isEmpty()) {
-            return "";
+        return values.isEmpty() ? "" : String.join(" | ", values);
+    }
+
+    private List<String> aggregateMainResponsibilities(List<ClassSummaryRecord> classRecords,
+                                                       List<MethodSummaryRecord> methodRecords) {
+        List<String> responsibilities = new ArrayList<String>();
+        Set<String> seen = new LinkedHashSet<String>();
+        for (ClassSummaryRecord record : classRecords) {
+            addIfPresent(responsibilities, seen, record.getRole(), 4);
+            addIfPresent(responsibilities, seen, record.getPurpose(), 4);
+            addIfPresent(responsibilities, seen, record.getKeyFunctionality(), 4);
+            if (responsibilities.size() >= 4) {
+                return responsibilities;
+            }
         }
-        return String.join(" | ", values);
+        for (MethodSummaryRecord record : methodRecords) {
+            addIfPresent(responsibilities, seen, record.getSummary(), 4);
+            if (responsibilities.size() >= 4) {
+                break;
+            }
+        }
+        return responsibilities;
+    }
+
+    private List<String> aggregateKeyComponents(ModuleExecutionContext ctx, List<ClassSummaryRecord> classRecords) {
+        List<String> names = new ArrayList<String>();
+        Set<String> seen = new LinkedHashSet<String>();
+        for (String componentId : ctx.getCoreComponentIds()) {
+            Node node = ctx.getComponents().get(componentId);
+            if (node == null) {
+                continue;
+            }
+            String classFqn = Texts.trimToEmpty(node.getClassFqn());
+            if (!classFqn.isEmpty()) {
+                for (ClassSummaryRecord record : classRecords) {
+                    if (classFqn.equals(record.getComponentId())) {
+                        addIfPresent(names, seen, record.getClassName(), 6);
+                        break;
+                    }
+                }
+            } else {
+                addIfPresent(names, seen, Texts.trimToEmpty(node.getName()), 6);
+            }
+        }
+        return names;
+    }
+
+    private List<String> aggregateMajorDependencies(List<MethodSummaryRecord> methodRecords) {
+        return Collections.emptyList();
+    }
+
+    private List<String> aggregateMajorSideEffects(List<MethodSummaryRecord> methodRecords) {
+        List<String> effects = new ArrayList<String>();
+        Set<String> seen = new LinkedHashSet<String>();
+        for (MethodSummaryRecord record : methodRecords) {
+            for (String effect : record.getSideEffects()) {
+                addIfPresent(effects, seen, effect, 5);
+                if (effects.size() >= 5) {
+                    return effects;
+                }
+            }
+        }
+        return effects;
+    }
+
+    private List<String> aggregateOpenQuestions(boolean summaryBacked,
+                                                List<ClassSummaryRecord> classRecords,
+                                                List<MethodSummaryRecord> methodRecords) {
+        List<String> questions = new ArrayList<String>();
+        if (!summaryBacked) {
+            questions.add("No structured summaries were found for this module. Inspect source when behavior details matter.");
+            return questions;
+        }
+        if (classRecords.isEmpty()) {
+            questions.add("Core component class summaries are missing; component responsibilities may need recall_summary or direct source inspection.");
+        }
+        if (methodRecords.isEmpty()) {
+            questions.add("Representative method behavior is not covered by current summaries; use recall_summary before relying on source inspection.");
+        }
+        return questions;
     }
 
     private List<PackageSummary> extractPackageSummaries(List<PackageSummaryRecord> packageRecords) {
@@ -151,6 +178,16 @@ public class DefaultModuleBriefBuilder implements ModuleBriefBuilder {
             }
         }
         return results;
+    }
+
+    private void addIfPresent(List<String> target, Set<String> seen, String value, int maxItems) {
+        String normalized = Texts.trimToEmpty(value);
+        if (target.size() >= maxItems || normalized.isEmpty()) {
+            return;
+        }
+        if (seen.add(normalized)) {
+            target.add(normalized);
+        }
     }
 
 }

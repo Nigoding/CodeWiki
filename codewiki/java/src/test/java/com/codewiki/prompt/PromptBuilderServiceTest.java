@@ -4,13 +4,14 @@ import com.codewiki.config.PromptContextProperties;
 import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.domain.Node;
 import com.codewiki.summary.ModuleBriefBuilder;
-import com.codewiki.summary.SummaryQueryService;
+import com.codewiki.summary.ModuleSummaryContext;
+import com.codewiki.summary.ModuleSummaryContextLoader;
+import com.codewiki.summary.SummaryFormatter;
 import com.codewiki.summary.dto.ClassSummary;
 import com.codewiki.summary.dto.ClassSummaryRecord;
 import com.codewiki.summary.dto.MethodSummary;
 import com.codewiki.summary.dto.MethodSummaryRecord;
 import com.codewiki.summary.dto.ModuleBrief;
-import com.codewiki.summary.dto.PackageSummaryRecord;
 import com.codewiki.tree.ModuleTreeManager;
 import com.codewiki.util.TokenCounter;
 import org.junit.jupiter.api.Test;
@@ -24,61 +25,59 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class PromptBuilderServiceTest {
 
     @Test
-    void prefersStructuredSummariesOverRawSource() {
-        SummaryQueryService summaryQueryService = mock(SummaryQueryService.class);
+    void prefersCoreComponentSummariesOverRawSource() {
         ModuleBriefBuilder briefBuilder = mock(ModuleBriefBuilder.class);
+        ModuleSummaryContextLoader summaryContextLoader = mock(ModuleSummaryContextLoader.class);
         PromptContextProperties properties = new PromptContextProperties();
+        SummaryFormatter summaryFormatter = new SummaryFormatter();
 
         when(briefBuilder.build(any(ModuleExecutionContext.class))).thenReturn(
                 new ModuleBrief(
                         "fat_module",
                         "Handles core business workflow.",
                         "Manage business workflow execution.",
-                        Collections.singletonList("Order processing: validate -> dispatch"),
-                        Collections.singletonList("Order"),
-                        Collections.singletonList("FatService orchestrates requests."),
-                        Collections.singletonList("FatService#run validates and dispatches."),
-                        Collections.singletonList("RepoClient"),
+                        Collections.singletonList("Coordinate workflow execution"),
+                        Collections.singletonList("FatService"),
+                        Collections.emptyList(),
+                        Collections.singletonList("Persist audit log"),
                         Collections.<String>emptyList(),
                         true
                 )
         );
+
         ClassSummary classSummary = new ClassSummary();
         classSummary.setRole("Workflow coordinator");
         classSummary.setKeyFunctionality("Coordinates module operations.");
         classSummary.setPurpose("Ensure the workflow is executed correctly.");
-        when(summaryQueryService.findClassSummaries(any(), anyList())).thenReturn(
+
+        MethodSummary methodSummary = new MethodSummary();
+        methodSummary.setFunctionName("run");
+        methodSummary.setPurpose("Execute the workflow.");
+        methodSummary.setFinalSummary("Validates inputs and dispatches the workflow.");
+        methodSummary.setSideEffects(Collections.singletonList("Persist audit log"));
+
+        ModuleSummaryContext summaryContext = new ModuleSummaryContext(
+                Collections.emptyList(),
                 Collections.singletonList(
                         new ClassSummaryRecord(
-                                "src/huge/FatService.java::FatService",
+                                "com.example.huge.FatService",
                                 "fat_module",
                                 "src/huge/FatService.java",
                                 "FatService",
                                 classSummary,
                                 "{\"role\":\"Workflow coordinator\"}"
                         )
-                )
-        );
-        MethodSummary methodSummary = new MethodSummary();
-        methodSummary.setFunctionName("run");
-        methodSummary.setPurpose("Execute the workflow.");
-        methodSummary.setFinalSummary("Validates inputs and dispatches the workflow.");
-        methodSummary.setInputs(Collections.singletonList("Order request"));
-        methodSummary.setOutputs("Processing result");
-        methodSummary.setSideEffects(Collections.singletonList("Persist audit log"));
-        methodSummary.setDataFlow("Request -> validation -> dispatch -> result");
-        when(summaryQueryService.findMethodSummariesByFqns(any(), anyList())).thenReturn(
+                ),
                 Collections.singletonList(
                         new MethodSummaryRecord(
-                                "src/huge/FatService.java::FatService#run",
-                                "src/huge/FatService.java::FatService",
+                                "com.example.huge.FatService#run()",
+                                "com.example.huge.FatService",
                                 "src/huge/FatService.java",
                                 "FatService",
                                 "run",
@@ -87,37 +86,41 @@ class PromptBuilderServiceTest {
                         )
                 )
         );
-        when(summaryQueryService.findPackageSummaryByClass(any(), any())).thenReturn(null);
+        when(summaryContextLoader.load(any(ModuleExecutionContext.class))).thenReturn(summaryContext);
 
         PromptBuilderService service = new PromptBuilderService(
                 new TokenCounter(),
-                summaryQueryService,
+                summaryContextLoader,
                 briefBuilder,
-                properties
+                properties,
+                summaryFormatter
         );
         ReflectionTestUtils.setField(
                 service, "userPromptTemplate", new ClassPathResource("prompts/user-prompt.st"));
 
         String prompt = service.buildUserPrompt(buildContext("fat_module", generateLargeContent()));
 
+        assertTrue(prompt.contains("<MODULE_CONTEXT>"));
+        assertTrue(prompt.contains("<MODULE_BRIEF>"));
+        assertTrue(prompt.contains("<CORE_COMPONENT_SUMMARIES>"));
+        assertTrue(prompt.contains("<CONTEXT_GAPS>"));
         assertTrue(prompt.contains("Coordinates module operations."));
         assertTrue(prompt.contains("Validates inputs and dispatches the workflow."));
         assertFalse(prompt.contains("public void method0"));
-        assertTrue(prompt.contains("<MODULE_BRIEF>"));
     }
 
     @Test
     void fallsBackToSourceWhenSummaryMissing() {
-        SummaryQueryService summaryQueryService = mock(SummaryQueryService.class);
         ModuleBriefBuilder briefBuilder = mock(ModuleBriefBuilder.class);
+        ModuleSummaryContextLoader summaryContextLoader = mock(ModuleSummaryContextLoader.class);
         PromptContextProperties properties = new PromptContextProperties();
+        SummaryFormatter summaryFormatter = new SummaryFormatter();
 
         when(briefBuilder.build(any(ModuleExecutionContext.class))).thenReturn(
                 new ModuleBrief(
                         "fat_module",
-                        "Purpose should be inferred from the module tree and source evidence.",
+                        "Module purpose should be inferred from the module tree and source evidence.",
                         "",
-                        Collections.<String>emptyList(),
                         Collections.<String>emptyList(),
                         Collections.<String>emptyList(),
                         Collections.<String>emptyList(),
@@ -126,15 +129,15 @@ class PromptBuilderServiceTest {
                         false
                 )
         );
-        when(summaryQueryService.findClassSummaries(any(), anyList())).thenReturn(Collections.<ClassSummaryRecord>emptyList());
-        when(summaryQueryService.findMethodSummariesByFqns(any(), anyList())).thenReturn(Collections.<MethodSummaryRecord>emptyList());
-        when(summaryQueryService.findPackageSummaryByClass(any(), any())).thenReturn(null);
+        when(summaryContextLoader.load(any(ModuleExecutionContext.class))).thenReturn(
+                new ModuleSummaryContext(Collections.emptyList(), Collections.emptyList(), Collections.emptyList()));
 
         PromptBuilderService service = new PromptBuilderService(
                 new TokenCounter(),
-                summaryQueryService,
+                summaryContextLoader,
                 briefBuilder,
-                properties
+                properties,
+                summaryFormatter
         );
         ReflectionTestUtils.setField(
                 service, "userPromptTemplate", new ClassPathResource("prompts/user-prompt.st"));
