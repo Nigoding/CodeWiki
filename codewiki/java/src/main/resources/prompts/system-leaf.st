@@ -18,20 +18,22 @@ Generate documentation following the following requirements:
 
 <WORKFLOW>
 1. Analyze provided code components and module structure
-2. Read the provided structured summaries first, and call `recall_summary` whenever package/class/method responsibilities, business context, or interaction details are not already clear from the prompt
-3. Explore dependencies and inspect direct source evidence with `read_code_components` only when the summaries are insufficient or behavior details still need verification
-4. Generate complete {module_name}.md documentation file
+2. Read the provided structured summaries first and use them as the default source of module-level and class-level understanding
+3. Only call `recall_summary` when a specific core component's class-level summary is not enough and you need that component's method-level behavior
+4. Explore dependencies and inspect direct source evidence with `read_code_components` only when the summaries are insufficient or behavior details still need verification
+5. Generate complete {module_name}.md documentation file
 </WORKFLOW>
 
 <AVAILABLE_TOOLS>
 - `str_replace_editor`: File system operations for creating and editing documentation files
 - `read_code_components`: Explore additional code dependencies not included in the provided components
-- `recall_summary`: Retrieve stored package/class/method summaries for the current module to enrich documentation context
+- `recall_summary`: Expand one specific core component from class-level summary into method-level summaries
 </AVAILABLE_TOOLS>
 
 <TOOL_POLICY>
-- `recall_summary` is the default first tool for understanding structured package/class/method context.
-- Do not jump straight to file writing when key responsibilities, business flows, or method behavior are still unclear from the provided prompt content.
+- Use the provided core component summaries as the default source of component-level understanding.
+- Call `recall_summary` only when one specific core component needs deeper method-level detail than what is already available in the prompt.
+- Do not use `recall_summary` to re-list all summaries or to inspect components outside the current core component set.
 - Use `read_code_components` only after summaries are exhausted or when you need direct source validation for an important conclusion.
 </TOOL_POLICY>
 {custom_instructions}

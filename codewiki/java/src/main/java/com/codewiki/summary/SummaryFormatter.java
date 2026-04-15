@@ -79,6 +79,19 @@ public class SummaryFormatter {
         return sb.toString();
     }
 
+    public String formatMethodSummaryRecall(MethodSummaryRecord record) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(record.getMethodName())
+                .append(": ")
+                .append(Texts.trimToEmpty(record.getSummary()));
+        if (!record.getSideEffects().isEmpty()) {
+            int limit = Math.min(2, record.getSideEffects().size());
+            sb.append("\n  Side effects: ")
+                    .append(String.join(", ", record.getSideEffects().subList(0, limit)));
+        }
+        return sb.toString();
+    }
+
     public String formatCoreComponentSummary(ClassSummaryRecord classRecord,
                                              List<MethodSummaryRecord> representativeMethods) {
         StringBuilder sb = new StringBuilder();

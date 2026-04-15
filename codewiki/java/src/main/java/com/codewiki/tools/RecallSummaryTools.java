@@ -5,9 +5,7 @@ import com.codewiki.domain.Node;
 import com.codewiki.summary.ModuleSummaryContext;
 import com.codewiki.summary.ModuleSummaryContextLoader;
 import com.codewiki.summary.SummaryFormatter;
-import com.codewiki.summary.dto.ClassSummaryRecord;
 import com.codewiki.summary.dto.MethodSummaryRecord;
-import com.codewiki.summary.dto.PackageSummaryRecord;
 import com.codewiki.util.Texts;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
@@ -31,75 +29,28 @@ public class RecallSummaryTools {
         this.summaryFormatter = summaryFormatter;
     }
 
-    @Tool("Get structured class summaries for the current module.")
-    public String getClassSummaries(ToolContext toolContext) {
-        ModuleExecutionContext ctx = ReadCodeComponentsTools.extractContext(toolContext);
-        ModuleSummaryContext summaryCtx = resolveContext(ctx);
-        String formatted = summaryFormatter.formatClassSummaries(summaryCtx.getClassSummaries(), 10);
-        return formatted.isEmpty()
-                ? "No structured class summaries found for the current module."
-                : formatted;
-    }
-
-    @Tool("Get package-level business summaries for the packages associated with the current module.")
-    public String getPackageSummaries(ToolContext toolContext) {
-        ModuleExecutionContext ctx = ReadCodeComponentsTools.extractContext(toolContext);
-        ModuleSummaryContext summaryCtx = resolveContext(ctx);
-        String formatted = summaryFormatter.formatPackageSummaries(summaryCtx.getPackageSummaries(), 5);
-        return formatted.isEmpty()
-                ? "No package summaries found for the current module."
-                : formatted;
-    }
-
-    @Tool("Get the package-level business summary for a specific package fully qualified name.")
-    public String getPackageSummary(
-            @ToolParam(description = "Package fully qualified name, e.g. com.example.order")
-            String packageFqn,
-            ToolContext toolContext) {
-        ModuleExecutionContext ctx = ReadCodeComponentsTools.extractContext(toolContext);
-        ModuleSummaryContext summaryCtx = resolveContext(ctx);
-        PackageSummaryRecord record = summaryCtx.getPackageSummary(packageFqn);
-        if (record == null || record.getPackageSummary() == null) {
-            return "No package summary found for package: " + packageFqn;
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("- Package: ").append(record.getPackageName()).append("\n");
-        if (Texts.trimToEmpty(record.getPackageSummary().getCoreBusinessFunction()).length() > 0) {
-            sb.append("- Core business function: ")
-                    .append(Texts.trimToEmpty(record.getPackageSummary().getCoreBusinessFunction()))
-                    .append("\n");
-        }
-        if (record.getPackageSummary().getKeyBusinessEntities() != null
-                && !record.getPackageSummary().getKeyBusinessEntities().isEmpty()) {
-            sb.append("- Key business entities: ")
-                    .append(String.join(", ", record.getPackageSummary().getKeyBusinessEntities()))
-                    .append("\n");
-        }
-        return sb.toString().trim();
-    }
-
-    @Tool("Get structured method summaries for a component in the current module.")
-    public String getMethodSummaries(
-            @ToolParam(description = "Class fully qualified name, e.g. com.example.auth.AuthService")
+    @Tool("Get method-level summaries for a specific core component when its class-level summary is not enough.")
+    public String getMethodSummariesForComponent(
+            @ToolParam(description = "Core component class fully qualified name, e.g. com.example.auth.AuthService")
             String componentId,
             ToolContext toolContext) {
 
         ModuleExecutionContext ctx = ReadCodeComponentsTools.extractContext(toolContext);
-        if (!collectClassFqns(ctx).contains(componentId)) {
-            return "Class is not part of the current module context: " + componentId;
+        if (!isCoreComponentClass(ctx, componentId)) {
+            return "Component is not part of the current module's core components: " + componentId;
         }
 
         ModuleSummaryContext summaryCtx = resolveContext(ctx);
         List<MethodSummaryRecord> records = summaryCtx.getMethodSummariesByClass(componentId);
         if (records.isEmpty()) {
-            return "No structured method summaries found for component: " + componentId;
+            return "No method-level summaries found for core component: " + componentId;
         }
 
         StringBuilder sb = new StringBuilder();
-        int limit = Math.min(12, records.size());
-        for (int i = 0; i < limit; i++) {
-            sb.append("- ").append(summaryFormatter.formatMethodSummary(records.get(i))).append("\n");
+        sb.append("Component: ").append(componentId).append("\n\n");
+        sb.append("Methods:\n");
+        for (MethodSummaryRecord record : records) {
+            sb.append("- ").append(summaryFormatter.formatMethodSummaryRecall(record)).append("\n");
         }
         return sb.toString().trim();
     }
@@ -112,14 +63,18 @@ public class RecallSummaryTools {
         return summaryCtx;
     }
 
-    private List<String> collectClassFqns(ModuleExecutionContext ctx) {
-        Set<String> values = new LinkedHashSet<String>();
+    private boolean isCoreComponentClass(ModuleExecutionContext ctx, String componentId) {
+        Set<String> classFqns = new LinkedHashSet<String>();
         for (String coreComponentId : ctx.getCoreComponentIds()) {
             Node node = ctx.getComponents().get(coreComponentId);
-            if (node != null && Texts.trimToEmpty(node.getClassFqn()).length() > 0) {
-                values.add(Texts.trimToEmpty(node.getClassFqn()));
+            if (node == null) {
+                continue;
+            }
+            String classFqn = Texts.trimToEmpty(node.getClassFqn());
+            if (!classFqn.isEmpty()) {
+                classFqns.add(classFqn);
             }
         }
-        return new ArrayList<String>(values);
+        return classFqns.contains(Texts.trimToEmpty(componentId));
     }
 }
