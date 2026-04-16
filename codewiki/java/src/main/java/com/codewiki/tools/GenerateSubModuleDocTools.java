@@ -2,6 +2,7 @@ package com.codewiki.tools;
 
 import com.codewiki.config.AgentConcurrencyProperties;
 import com.codewiki.context.ModuleExecutionContext;
+import com.codewiki.domain.Node;
 import com.codewiki.service.SubModuleDocumentationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,13 +12,19 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 @Component
@@ -45,31 +52,39 @@ public class GenerateSubModuleDocTools {
     @Tool(
             "Delegate documentation generation for a set of sub-modules to concurrent sub-agents. "
                     + "Each sub-module will be documented in its own module markdown file. "
-                    + "subModuleSpecs must be a map of sub-module name to the list of component IDs that belong to it. "
+                    + "You should provide sub-modules via 'subModuleRules' using concise grouping rules "
+                    + "(e.g. 'package:com.foo', 'pattern:.*Controller\\.java$', 'file:path/to/File.java', 'remaining:'). "
+                    + "Only use 'explicitSubModuleSpecs' when the split cannot be expressed cleanly with rules. "
                     + "Returns a summary of generated files and failures."
     )
     public String generateSubModuleDocumentation(
-            @ToolParam(description = "Map of sub-module name -> list of core component IDs")
-            Map<String, List<String>> subModuleSpecs,
+            @ToolParam(description = "Map of sub-module name -> grouping rule. Preferred. "
+                    + "Supported rules: 'package:prefix', 'pattern:regex', 'file:relative/path.java', 'remaining:'")
+            Map<String, String> subModuleRules,
+            @ToolParam(description = "Optional map of sub-module name -> explicit list of component IDs. "
+                    + "ONLY use this when rules cannot cleanly express the split.")
+            Map<String, List<String>> explicitSubModuleSpecs,
             ToolContext toolContext) {
 
         ModuleExecutionContext parentContext = ReadCodeComponentsTools.extractContext(toolContext);
         if (parentContext.hasReachedMaxDepth()) {
-            log.warn("[{}] Max depth {} reached, sub-agent delegation skipped for {}",
-                    parentContext.getModuleName(), parentContext.getMaxDepth(), subModuleSpecs.keySet());
-            return "Max recursion depth reached. Sub-modules not generated: "
-                    + String.join(", ", subModuleSpecs.keySet());
+            log.warn("[{}] Max depth {} reached, sub-agent delegation skipped",
+                    parentContext.getModuleName(), parentContext.getMaxDepth());
+            return "Max recursion depth reached. Sub-modules not generated.";
         }
 
-        if (subModuleSpecs.isEmpty()) {
-            return "No sub-modules specified.";
+        Map<String, List<String>> resolvedSpecs = resolveSubModuleSpecs(
+                subModuleRules, explicitSubModuleSpecs, parentContext);
+
+        if (resolvedSpecs.isEmpty()) {
+            return "No sub-modules specified after resolving rules and explicit specs.";
         }
 
         parentContext.getModuleTreeManager().registerSubModules(
-                parentContext.getModulePath(), subModuleSpecs);
+                parentContext.getModulePath(), resolvedSpecs);
 
         List<CompletableFuture<SubAgentResult>> futures = new ArrayList<CompletableFuture<SubAgentResult>>();
-        for (Map.Entry<String, List<String>> entry : subModuleSpecs.entrySet()) {
+        for (Map.Entry<String, List<String>> entry : resolvedSpecs.entrySet()) {
             final String subModuleName = entry.getKey();
             final ModuleExecutionContext subContext =
                     parentContext.forSubModule(subModuleName, entry.getValue());
@@ -101,6 +116,133 @@ public class GenerateSubModuleDocTools {
         }
 
         return buildSummary(succeeded, failed);
+    }
+
+    /**
+     * Resolves rule-based specs first, then explicit specs, enforcing mutual exclusivity.
+     * Each component ID is assigned to at most one sub-module (first match wins).
+     */
+    private Map<String, List<String>> resolveSubModuleSpecs(
+            Map<String, String> subModuleRules,
+            Map<String, List<String>> explicitSubModuleSpecs,
+            ModuleExecutionContext parentContext) {
+
+        Map<String, List<String>> result = new LinkedHashMap<String, List<String>>();
+        Set<String> assigned = new LinkedHashSet<String>();
+        List<String> coreComponentIds = parentContext.getCoreComponentIds();
+        Map<String, Node> components = parentContext.getComponents();
+
+        // ── Phase 1: resolve rules in declaration order ─────────────────────────
+        if (subModuleRules != null) {
+            for (Map.Entry<String, String> entry : subModuleRules.entrySet()) {
+                String subModuleName = entry.getKey();
+                String rule = entry.getValue() == null ? "" : entry.getValue().trim();
+                if (rule.isEmpty()) {
+                    log.warn("Empty rule for sub-module '{}', skipping", subModuleName);
+                    continue;
+                }
+
+                List<String> matched = new ArrayList<String>();
+                for (String compId : coreComponentIds) {
+                    if (assigned.contains(compId)) {
+                        continue;
+                    }
+                    if (matchesRule(compId, components.get(compId), rule)) {
+                        matched.add(compId);
+                        assigned.add(compId);
+                    }
+                }
+
+                if (!matched.isEmpty()) {
+                    result.put(subModuleName, matched);
+                    log.info("Rule '{}' matched {} components for sub-module '{}'",
+                            rule, matched.size(), subModuleName);
+                } else {
+                    log.warn("Rule '{}' matched no components for sub-module '{}'", rule, subModuleName);
+                }
+            }
+        }
+
+        // ── Phase 2: resolve explicit specs with deduplication ──────────────────
+        if (explicitSubModuleSpecs != null) {
+            List<String> duplicates = new ArrayList<String>();
+            for (Map.Entry<String, List<String>> entry : explicitSubModuleSpecs.entrySet()) {
+                String subModuleName = entry.getKey();
+                List<String> ids = entry.getValue();
+                if (ids == null || ids.isEmpty()) {
+                    continue;
+                }
+
+                List<String> uniqueIds = new ArrayList<String>();
+                for (String compId : ids) {
+                    if (assigned.contains(compId)) {
+                        duplicates.add(compId + " (removed from " + subModuleName + ")");
+                    } else {
+                        uniqueIds.add(compId);
+                        assigned.add(compId);
+                    }
+                }
+
+                if (!uniqueIds.isEmpty()) {
+                    result.merge(subModuleName, uniqueIds, (oldList, newList) -> {
+                        List<String> merged = new ArrayList<String>(oldList);
+                        merged.addAll(newList);
+                        return merged;
+                    });
+                }
+            }
+
+            if (!duplicates.isEmpty()) {
+                log.warn("Deduplicated overlapping explicit component IDs: {}", duplicates);
+            }
+        }
+
+        return result;
+    }
+
+    private boolean matchesRule(String compId, Node node, String rule) {
+        if (rule.startsWith("package:")) {
+            String prefix = rule.substring("package:".length());
+            if (node != null) {
+                if (node.getClassFqn() != null && node.getClassFqn().startsWith(prefix)) {
+                    return true;
+                }
+                for (String pkg : node.getPackageFqns()) {
+                    if (pkg.equals(prefix) || pkg.startsWith(prefix + ".")) {
+                        return true;
+                    }
+                }
+            }
+            return compId.startsWith(prefix);
+        }
+
+        if (rule.startsWith("pattern:")) {
+            String regex = rule.substring("pattern:".length());
+            try {
+                return Pattern.matches(regex, compId);
+            } catch (PatternSyntaxException e) {
+                log.warn("Invalid regex pattern '{}': {}", regex, e.getMessage());
+                return false;
+            }
+        }
+
+        if (rule.startsWith("file:")) {
+            String filePath = rule.substring("file:".length());
+            if (node != null && filePath.equals(node.getRelativePath())) {
+                return true;
+            }
+            // component IDs are often "relative/path::SymbolName"
+            int sep = compId.indexOf("::");
+            String filePart = sep >= 0 ? compId.substring(0, sep) : compId;
+            return filePath.equals(filePart);
+        }
+
+        if (rule.equals("remaining:") || rule.equals("remaining")) {
+            return true; // will only see unassigned IDs because caller checks assigned set first
+        }
+
+        log.warn("Unrecognized sub-module rule '{}', treating as no-match", rule);
+        return false;
     }
 
     private SubAgentResult executeSubAgent(String subModuleName, ModuleExecutionContext subContext) {
