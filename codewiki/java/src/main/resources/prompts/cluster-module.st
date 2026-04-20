@@ -5,14 +5,14 @@ Group the given core components of `{module_name}` into 2 or more smaller, cohes
 </TASK>
 
 <RULES>
+- Component IDs are class fully qualified names, for example `com.example.auth.AuthService`.
 - Use only the component IDs provided in `<POTENTIAL_CORE_COMPONENTS>`.
 - Every provided component ID must appear in exactly one child module.
 - Do not duplicate a component across child modules.
 - Create child modules only when the split is clear and cohesive.
-- Prefer package boundaries and naming conventions when grouping.
-- Avoid over-fragmentation. Do not create tiny child modules with only 1 or 2 components unless there is no cleaner grouping.
-- Prefer fewer, broader, cohesive child modules over many tiny modules.
-- Make sure the grouped result is exhaustive. If some components do not fit a strong thematic group, place them into a broader catch-all child module such as `remaining_components` instead of omitting them.
+- Prefer grouping components that share a clear package prefix, such as `com.example.auth.*` or `com.example.order.controller.*`.
+- Use naming conventions like `*Controller`, `*Service`, `*Repository`, or `*Mapper` only as supporting signals.
+- Make sure the grouped result covers all provided components.
 - If no meaningful split exists, return an empty JSON object.
 - Return strict JSON inside `<GROUPED_COMPONENTS>` as:
   top-level object: child module name -> array of component IDs
