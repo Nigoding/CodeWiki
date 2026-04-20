@@ -130,10 +130,12 @@ public class PreModuleClusteringService {
             if (moduleName.isEmpty()) {
                 continue;
             }
+
             List<String> ids = entry.getValue();
             if (ids == null || ids.isEmpty()) {
                 continue;
             }
+
             List<String> cleaned = new ArrayList<String>();
             for (String componentId : ids) {
                 if (!allowed.contains(componentId) || assigned.contains(componentId)) {
@@ -144,12 +146,17 @@ public class PreModuleClusteringService {
                 cleaned.add(componentId);
                 assigned.add(componentId);
             }
+
             if (!cleaned.isEmpty()) {
                 validated.put(moduleName, cleaned);
             }
         }
 
-        if (validated.size() <= 1 || assigned.size() != allowed.size()) {
+        if (validated.size() <= 1) {
+            return PreClusterPlan.empty();
+        }
+
+        if (assigned.size() != allowed.size()) {
             log.warn("[{}] Rejecting pre-cluster plan because it does not cover all core components exactly once",
                     ctx.getModuleName());
             return PreClusterPlan.empty();
