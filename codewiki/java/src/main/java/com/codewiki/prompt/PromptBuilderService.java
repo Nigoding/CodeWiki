@@ -17,6 +17,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -72,6 +75,12 @@ public class PromptBuilderService {
     @Value("classpath:prompts/user-prompt.st")
     private Resource userPromptTemplate;
 
+    @Value("classpath:prompts/cluster-module.st")
+    private Resource clusterModuleTemplate;
+
+    @Value("classpath:prompts/parent-overview.st")
+    private Resource parentOverviewTemplate;
+
     private final TokenCounter tokenCounter;
     private final ModuleSummaryContextLoader summaryContextLoader;
     private final ModuleBriefBuilder moduleBriefBuilder;
@@ -112,6 +121,27 @@ public class PromptBuilderService {
         vars.put("context_gaps", renderContextGaps(ctx, brief));
         vars.put("core_components", buildFallbackSourceContext(ctx, brief));
         return new PromptTemplate(userPromptTemplate).render(vars);
+    }
+
+    public String buildClusterPrompt(ModuleExecutionContext ctx) {
+        Map<String, Object> vars = new HashMap<String, Object>();
+        vars.put("module_name", ctx.getModuleName());
+        String moduleTreeContext = formatModuleTree(ctx.getModuleTreeManager().getReadOnlySnapshot(), ctx.getModuleName());
+        vars.put("module_tree_context", moduleTreeContext.isEmpty() ? "(empty)" : moduleTreeContext);
+        vars.put("potential_core_components", formatPotentialCoreComponents(ctx, false));
+        return new PromptTemplate(clusterModuleTemplate).render(vars);
+    }
+
+    public int countClusterInputTokens(ModuleExecutionContext ctx) {
+        return tokenCounter.count(formatPotentialCoreComponents(ctx, true));
+    }
+
+    public String buildParentOverviewPrompt(ModuleExecutionContext ctx, List<String> childModuleNames) {
+        Map<String, Object> vars = new HashMap<String, Object>();
+        vars.put("module_name", ctx.getModuleName());
+        vars.put("module_tree", formatModuleTree(ctx.getModuleTreeManager().getReadOnlySnapshot(), ctx.getModuleName()));
+        vars.put("child_module_docs", renderChildModuleDocs(ctx, childModuleNames));
+        return new PromptTemplate(parentOverviewTemplate).render(vars);
     }
 
     /**
@@ -278,6 +308,54 @@ public class PromptBuilderService {
         sb.append("- Module tree:\n")
                 .append(formatModuleTree(ctx.getModuleTreeManager().getReadOnlySnapshot(), ctx.getModuleName()));
         return sb.toString().trim();
+    }
+
+    private String formatPotentialCoreComponents(ModuleExecutionContext ctx, boolean includeSource) {
+        Map<String, List<String>> byFile = new LinkedHashMap<String, List<String>>();
+        for (String componentId : ctx.getCoreComponentIds()) {
+            Node node = ctx.getComponents().get(componentId);
+            if (node == null) {
+                continue;
+            }
+            String relativePath = Texts.trimToEmpty(node.getRelativePath());
+            byFile.computeIfAbsent(relativePath, k -> new ArrayList<String>()).add(componentId);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, List<String>> entry : byFile.entrySet()) {
+            String relativePath = entry.getKey();
+            sb.append("# ").append(relativePath).append("\n");
+            for (String componentId : entry.getValue()) {
+                sb.append("  ").append(componentId).append("\n");
+            }
+            if (includeSource && !entry.getValue().isEmpty()) {
+                Node firstNode = ctx.getComponents().get(entry.getValue().get(0));
+                if (firstNode != null && firstNode.getContent() != null) {
+                    sb.append(firstNode.getContent()).append("\n");
+                }
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    private String renderChildModuleDocs(ModuleExecutionContext ctx, List<String> childModuleNames) {
+        StringBuilder sb = new StringBuilder();
+        for (String childModuleName : childModuleNames) {
+            if (sb.length() > 0) {
+                sb.append("\n\n");
+            }
+            sb.append("## ").append(childModuleName).append("\n");
+            sb.append(readModuleDoc(ctx.getAbsoluteDocsPath(), childModuleName));
+        }
+        return sb.toString().trim();
+    }
+
+    private String readModuleDoc(String docsPath, String moduleName) {
+        try {
+            return new String(Files.readAllBytes(Paths.get(docsPath, moduleName + ".md")));
+        } catch (IOException e) {
+            return "(missing child module doc: " + moduleName + ".md)";
+        }
     }
 
     private String renderModuleBrief(ModuleBrief brief) {

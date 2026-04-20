@@ -4,10 +4,14 @@ import com.codewiki.agent.strategy.AgentStrategy;
 import com.codewiki.config.AgentProperties;
 import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.context.ModuleExecutionContextFactory;
+import com.codewiki.domain.ModuleTask;
 import com.codewiki.domain.Node;
 import com.codewiki.exception.DocumentationGenerationException;
 import com.codewiki.repository.ModuleTreeRepository;
 import com.codewiki.service.DocumentationPersistenceService;
+import com.codewiki.service.ParentModuleDocumentationService;
+import com.codewiki.service.PreClusterPlan;
+import com.codewiki.service.PreModuleClusteringService;
 import com.codewiki.summary.ModuleSummaryContextLoader;
 import com.codewiki.tree.ModuleTreeManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +54,8 @@ class DocumentationOrchestrationServiceTest {
     @Mock private ModuleExecutionContextFactory contextFactory;
     @Mock private DocumentationPersistenceService persistenceService;
     @Mock private ModuleSummaryContextLoader summaryContextLoader;
+    @Mock private PreModuleClusteringService preModuleClusteringService;
+    @Mock private ParentModuleDocumentationService parentModuleDocumentationService;
 
     private ModuleTreeManager moduleTreeManager;
     private AgentProperties agentProperties;
@@ -63,6 +69,11 @@ class DocumentationOrchestrationServiceTest {
         agentProperties.setModuleTreeFilename("module_tree.json");
         agentProperties.setOverviewFilename("overview.md");
 
+        when(moduleTreeRepository.load(anyString(), anyString())).thenReturn(moduleTreeManager);
+        when(preModuleClusteringService.cluster(any())).thenReturn(PreClusterPlan.empty());
+        when(contextFactory.create(any(ModuleTask.class), any(ModuleTreeManager.class)))
+                .thenAnswer(inv -> buildContext(inv.getArgument(0), inv.getArgument(1)));
+
         // complexStrategy evaluated first (@Order(1) in production)
         orchestrator = new DocumentationOrchestrationService(
                 Arrays.asList(complexStrategy, leafStrategy),
@@ -70,7 +81,9 @@ class DocumentationOrchestrationServiceTest {
                 contextFactory,
                 persistenceService,
                 agentProperties,
-                summaryContextLoader);
+                summaryContextLoader,
+                preModuleClusteringService,
+                parentModuleDocumentationService);
     }
 
     // ── strategy selection ────────────────────────────────────────────────────
@@ -80,7 +93,7 @@ class DocumentationOrchestrationServiceTest {
         when(complexStrategy.supports(any())).thenReturn(true);
         when(complexStrategy.execute(any())).thenReturn(Collections.emptyMap());
 
-        orchestrator.processModule(buildCtx("auth_module"));
+        orchestrator.processModule(buildTask("auth_module"));
 
         verify(complexStrategy).execute(any());
         verify(leafStrategy, never()).execute(any());
@@ -92,7 +105,7 @@ class DocumentationOrchestrationServiceTest {
         when(leafStrategy.supports(any())).thenReturn(true);
         when(leafStrategy.execute(any())).thenReturn(Collections.emptyMap());
 
-        orchestrator.processModule(buildCtx("simple_module"));
+        orchestrator.processModule(buildTask("simple_module"));
 
         verify(leafStrategy).execute(any());
         verify(complexStrategy, never()).execute(any());
@@ -105,7 +118,7 @@ class DocumentationOrchestrationServiceTest {
         String moduleName = "existing_module";
         Files.write(tempDir.resolve(moduleName + ".md"), "already done".getBytes());
 
-        orchestrator.processModule(buildCtx(moduleName));
+        orchestrator.processModule(buildTask(moduleName));
 
         verify(complexStrategy, never()).execute(any());
         verify(leafStrategy, never()).execute(any());
@@ -115,7 +128,7 @@ class DocumentationOrchestrationServiceTest {
     void skipsWhenOverviewFileAlreadyExists() throws IOException {
         Files.write(tempDir.resolve("overview.md"), "already done".getBytes());
 
-        orchestrator.processModule(buildCtx("any_module"));
+        orchestrator.processModule(buildTask("any_module"));
 
         verify(complexStrategy, never()).execute(any());
         verify(leafStrategy, never()).execute(any());
@@ -131,7 +144,7 @@ class DocumentationOrchestrationServiceTest {
         when(complexStrategy.executeWithFallback(any()))
                 .thenReturn(Collections.emptyMap());
 
-        orchestrator.processModule(buildCtx("flaky_module"));
+        orchestrator.processModule(buildTask("flaky_module"));
 
         verify(complexStrategy).execute(any());
         verify(complexStrategy).executeWithFallback(any());
@@ -146,7 +159,7 @@ class DocumentationOrchestrationServiceTest {
                 .thenThrow(new RuntimeException("fallback failed"));
 
         assertThrows(DocumentationGenerationException.class,
-                () -> orchestrator.processModule(buildCtx("broken_module")));
+                () -> orchestrator.processModule(buildTask("broken_module")));
     }
 
     // ── persistence ───────────────────────────────────────────────────────────
@@ -156,17 +169,15 @@ class DocumentationOrchestrationServiceTest {
         when(complexStrategy.supports(any())).thenReturn(true);
         when(complexStrategy.execute(any())).thenReturn(Collections.emptyMap());
 
-        orchestrator.processModule(buildCtx("some_module"));
+        orchestrator.processModule(buildTask("some_module"));
 
-        verify(moduleTreeRepository).save(
-                eq(tempDir.toString()),
-                eq("module_tree.json"),
-                any(ModuleTreeManager.class));
+        verify(persistenceService).persist(any(ModuleTask.class), any(ModuleExecutionContext.class),
+                any(AgentExecutionResult.class), any(ModuleTreeManager.class));
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private ModuleExecutionContext buildCtx(String moduleName) {
+    private ModuleTask buildTask(String moduleName) {
         Map<String, Node> components = new HashMap<>();
         Node node = new Node(
                 "src/" + moduleName + ".py::SomeClass",
@@ -176,15 +187,30 @@ class DocumentationOrchestrationServiceTest {
                 "SomeClass");
         components.put(node.getId(), node);
 
+        return new ModuleTask(
+                moduleName,
+                components,
+                Collections.singletonList(node.getId()),
+                Collections.<String>emptyList(),
+                tempDir.toString(),
+                "/repo",
+                3,
+                1,
+                null);
+    }
+
+    private ModuleExecutionContext buildContext(ModuleTask task, ModuleTreeManager treeManager) {
         return ModuleExecutionContext.builder()
-                .moduleName(moduleName)
-                .components(components)
-                .coreComponentIds(Collections.singletonList(node.getId()))
-                .absoluteDocsPath(tempDir.toString())
-                .absoluteRepoPath("/repo")
-                .maxDepth(3)
-                .currentDepth(1)
-                .moduleTreeManager(moduleTreeManager)
+                .moduleName(task.getModuleName())
+                .components(task.getComponents())
+                .coreComponentIds(task.getCoreComponentIds())
+                .modulePath(task.getModulePath())
+                .absoluteDocsPath(task.getDocsPath())
+                .absoluteRepoPath(task.getRepoPath())
+                .maxDepth(task.getMaxDepth())
+                .currentDepth(task.getCurrentDepth())
+                .customInstructions(task.getCustomInstructions())
+                .moduleTreeManager(treeManager)
                 .build();
     }
 }

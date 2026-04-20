@@ -58,8 +58,7 @@ public class ComplexModuleStrategy implements AgentStrategy {
 
     @Override
     public boolean supports(ModuleExecutionContext ctx) {
-        int tokenCount = promptBuilder.countCoreComponentTokens(ctx);
-        return evaluator.shouldUseComplexAgent(ctx, tokenCount);
+        return evaluator.shouldUseComplexAgent(ctx);
     }
 
     @Override

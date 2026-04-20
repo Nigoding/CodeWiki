@@ -8,6 +8,9 @@ import com.codewiki.domain.ModuleTask;
 import com.codewiki.exception.DocumentationGenerationException;
 import com.codewiki.repository.ModuleTreeRepository;
 import com.codewiki.service.DocumentationPersistenceService;
+import com.codewiki.service.ParentModuleDocumentationService;
+import com.codewiki.service.PreClusterPlan;
+import com.codewiki.service.PreModuleClusteringService;
 import com.codewiki.summary.ModuleSummaryContext;
 import com.codewiki.summary.ModuleSummaryContextLoader;
 import com.codewiki.tree.ModuleTreeManager;
@@ -18,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -33,19 +37,25 @@ public class DocumentationOrchestrationService {
     private final DocumentationPersistenceService persistenceService;
     private final AgentProperties agentProperties;
     private final ModuleSummaryContextLoader summaryContextLoader;
+    private final PreModuleClusteringService preModuleClusteringService;
+    private final ParentModuleDocumentationService parentModuleDocumentationService;
 
     public DocumentationOrchestrationService(List<AgentStrategy> strategies,
                                              ModuleTreeRepository moduleTreeRepository,
                                              ModuleExecutionContextFactory contextFactory,
                                              DocumentationPersistenceService persistenceService,
                                              AgentProperties agentProperties,
-                                             ModuleSummaryContextLoader summaryContextLoader) {
+                                             ModuleSummaryContextLoader summaryContextLoader,
+                                             PreModuleClusteringService preModuleClusteringService,
+                                             ParentModuleDocumentationService parentModuleDocumentationService) {
         this.strategies = strategies;
         this.moduleTreeRepository = moduleTreeRepository;
         this.contextFactory = contextFactory;
         this.persistenceService = persistenceService;
         this.agentProperties = agentProperties;
         this.summaryContextLoader = summaryContextLoader;
+        this.preModuleClusteringService = preModuleClusteringService;
+        this.parentModuleDocumentationService = parentModuleDocumentationService;
     }
 
     public Map<String, Object> processModule(ModuleTask task) {
@@ -63,7 +73,33 @@ public class DocumentationOrchestrationService {
         if (!treeManager.containsTopLevelModule(task.getModuleName())) {
             treeManager.registerTopLevelModule(task.getModuleName(), task.getCoreComponentIds());
         }
-        return processModuleContext(context);
+        return processModuleHierarchyContext(context);
+    }
+
+    public Map<String, Object> processModuleHierarchyContext(ModuleExecutionContext context) {
+        log.info("Processing module hierarchy: {} (depth={})", context.getModuleName(), context.getCurrentDepth());
+
+        if (isAlreadyProcessed(context)) {
+            log.info("Already processed, skipping module: {}", context.getModuleName());
+            return context.getModuleTreeManager().getReadOnlySnapshot();
+        }
+
+        PreClusterPlan clusterPlan = preModuleClusteringService.cluster(context);
+        if (clusterPlan.isEmpty()) {
+            return processModuleContext(context);
+        }
+
+        context.getModuleTreeManager().registerSubModules(context.getModulePath(), clusterPlan.getSubModules());
+        for (Map.Entry<String, List<String>> entry : clusterPlan.getSubModules().entrySet()) {
+            ModuleExecutionContext childContext = context.forSubModule(entry.getKey(), entry.getValue());
+            processModuleHierarchyContext(childContext);
+        }
+
+        parentModuleDocumentationService.generate(
+                context,
+                new ArrayList<String>(clusterPlan.getSubModules().keySet()),
+                context.getModuleTreeManager());
+        return context.getModuleTreeManager().getReadOnlySnapshot();
     }
 
     public Map<String, Object> processModuleContext(ModuleExecutionContext context) {

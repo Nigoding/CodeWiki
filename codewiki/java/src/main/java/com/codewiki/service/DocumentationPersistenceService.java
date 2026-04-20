@@ -38,7 +38,7 @@ public class DocumentationPersistenceService {
         treeManager.saveToFile(task.getDocsPath(), agentProperties.getModuleTreeFilename());
     }
 
-    private void writeModuleDoc(String docsPath, String moduleName, String content) {
+    public void writeModuleDoc(String docsPath, String moduleName, String content) {
         Path target = Paths.get(docsPath, moduleName + ".md").toAbsolutePath().normalize();
         try {
             Path parent = target.getParent();

@@ -17,6 +17,6 @@ public class SubModuleDocumentationService {
     }
 
     public Map<String, Object> generate(ModuleExecutionContext subContext) {
-        return documentationOrchestrationService.processModuleContext(subContext);
+        return documentationOrchestrationService.processModuleHierarchyContext(subContext);
     }
 }

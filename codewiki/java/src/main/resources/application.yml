@@ -23,6 +23,8 @@ codewiki:
   agent:
     max-depth: 3
     max-tokens-per-leaf-module: 4000
+    pre-cluster-enabled: true
+    max-tokens-per-cluster-module: 4000
     module-tree-filename: module_tree.json
     overview-filename: overview.md
 

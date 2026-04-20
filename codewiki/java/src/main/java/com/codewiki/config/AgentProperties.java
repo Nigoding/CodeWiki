@@ -19,6 +19,12 @@ public class AgentProperties {
      */
     private int maxTokensPerLeafModule = 4000;
 
+    /** Whether to run LLM-based pre-clustering before documentation generation. */
+    private boolean preClusterEnabled = true;
+
+    /** Token threshold above which a module should be pre-clustered before documentation. */
+    private int maxTokensPerClusterModule = 4000;
+
     /** File name of the persisted module-tree JSON file */
     private String moduleTreeFilename = "module_tree.json";
 
@@ -30,6 +36,14 @@ public class AgentProperties {
 
     public int getMaxTokensPerLeafModule() { return maxTokensPerLeafModule; }
     public void setMaxTokensPerLeafModule(int v) { this.maxTokensPerLeafModule = v; }
+
+    public boolean isPreClusterEnabled() { return preClusterEnabled; }
+    public void setPreClusterEnabled(boolean preClusterEnabled) { this.preClusterEnabled = preClusterEnabled; }
+
+    public int getMaxTokensPerClusterModule() { return maxTokensPerClusterModule; }
+    public void setMaxTokensPerClusterModule(int maxTokensPerClusterModule) {
+        this.maxTokensPerClusterModule = maxTokensPerClusterModule;
+    }
 
     public String getModuleTreeFilename() { return moduleTreeFilename; }
     public void setModuleTreeFilename(String v) { this.moduleTreeFilename = v; }
