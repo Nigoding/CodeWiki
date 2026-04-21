@@ -91,7 +91,7 @@ class DocumentationOrchestrationServiceTest {
     @Test
     void selectsComplexStrategyWhenItSupports() {
         when(complexStrategy.supports(any())).thenReturn(true);
-        when(complexStrategy.execute(any())).thenReturn(Collections.emptyMap());
+        when(complexStrategy.execute(any())).thenReturn(new AgentExecutionResult("content", false, false));
 
         orchestrator.processModule(buildTask("auth_module"));
 
@@ -103,7 +103,7 @@ class DocumentationOrchestrationServiceTest {
     void fallsBackToLeafWhenComplexDoesNotSupport() {
         when(complexStrategy.supports(any())).thenReturn(false);
         when(leafStrategy.supports(any())).thenReturn(true);
-        when(leafStrategy.execute(any())).thenReturn(Collections.emptyMap());
+        when(leafStrategy.execute(any())).thenReturn(new AgentExecutionResult("content", false, false));
 
         orchestrator.processModule(buildTask("simple_module"));
 
@@ -142,7 +142,7 @@ class DocumentationOrchestrationServiceTest {
         when(complexStrategy.execute(any()))
                 .thenThrow(new RuntimeException("primary model timeout"));
         when(complexStrategy.executeWithFallback(any()))
-                .thenReturn(Collections.emptyMap());
+                .thenReturn(new AgentExecutionResult("content", false, true));
 
         orchestrator.processModule(buildTask("flaky_module"));
 
@@ -167,12 +167,31 @@ class DocumentationOrchestrationServiceTest {
     @Test
     void savesModuleTreeAfterSuccessfulRun() {
         when(complexStrategy.supports(any())).thenReturn(true);
-        when(complexStrategy.execute(any())).thenReturn(Collections.emptyMap());
+        when(complexStrategy.execute(any())).thenReturn(new AgentExecutionResult("content", false, false));
 
         orchestrator.processModule(buildTask("some_module"));
 
         verify(persistenceService).persist(any(ModuleTask.class), any(ModuleExecutionContext.class),
                 any(AgentExecutionResult.class), any(ModuleTreeManager.class));
+    }
+
+    @Test
+    void persistsClusterPlanImmediatelyAfterRegisteringSubModules() {
+        when(preModuleClusteringService.cluster(any())).thenReturn(
+                PreClusterPlan.of(Collections.singletonMap(
+                        "child_module",
+                        Collections.singletonList("src/parent_module.py::SomeClass")
+                )));
+        doReturn(true).when(persistenceService).moduleDocExists(anyString(), eq("child_module"));
+
+        orchestrator.processModule(buildTask("parent_module"));
+
+        verify(moduleTreeRepository, atLeastOnce())
+                .save(eq(tempDir.toString()), eq("module_tree.json"), any(ModuleTreeManager.class));
+        verify(parentModuleDocumentationService)
+                .generate(any(ModuleExecutionContext.class),
+                        eq(Collections.singletonList("child_module")),
+                        any(ModuleTreeManager.class));
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

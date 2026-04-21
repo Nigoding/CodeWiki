@@ -72,6 +72,7 @@ public class DocumentationOrchestrationService {
 
         if (!treeManager.containsTopLevelModule(task.getModuleName())) {
             treeManager.registerTopLevelModule(task.getModuleName(), task.getCoreComponentIds());
+            persistModuleTree(task.getDocsPath(), treeManager);
         }
         return processModuleHierarchyContext(context);
     }
@@ -90,6 +91,7 @@ public class DocumentationOrchestrationService {
         }
 
         context.getModuleTreeManager().registerSubModules(context.getModulePath(), clusterPlan.getSubModules());
+        persistModuleTree(context.getAbsoluteDocsPath(), context.getModuleTreeManager());
         for (Map.Entry<String, List<String>> entry : clusterPlan.getSubModules().entrySet()) {
             ModuleExecutionContext childContext = context.forSubModule(entry.getKey(), entry.getValue());
             processModuleHierarchyContext(childContext);
@@ -168,5 +170,9 @@ public class DocumentationOrchestrationService {
     private boolean isAlreadyProcessed(ModuleExecutionContext context) {
         return Files.exists(Paths.get(context.getAbsoluteDocsPath(), agentProperties.getOverviewFilename()))
                 || persistenceService.moduleDocExists(context.getAbsoluteDocsPath(), context.getModuleName());
+    }
+
+    private void persistModuleTree(String docsPath, ModuleTreeManager treeManager) {
+        moduleTreeRepository.save(docsPath, agentProperties.getModuleTreeFilename(), treeManager);
     }
 }
