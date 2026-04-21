@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -186,12 +187,21 @@ class DocumentationOrchestrationServiceTest {
 
         orchestrator.processModule(buildTask("parent_module"));
 
+        ArgumentCaptor<ModuleTreeManager> treeCaptor = ArgumentCaptor.forClass(ModuleTreeManager.class);
         verify(moduleTreeRepository, atLeastOnce())
-                .save(eq(tempDir.toString()), eq("module_tree.json"), any(ModuleTreeManager.class));
+                .save(eq(tempDir.toString()), eq("module_tree.json"), treeCaptor.capture());
         verify(parentModuleDocumentationService)
                 .generate(any(ModuleExecutionContext.class),
                         eq(Collections.singletonList("child_module")),
                         any(ModuleTreeManager.class));
+
+        Map<String, Object> snapshot = treeCaptor.getValue().getReadOnlySnapshot();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> parentNode = (Map<String, Object>) snapshot.get("parent_module");
+        assertNotNull(parentNode);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> children = (Map<String, Object>) parentNode.get("children");
+        assertTrue(children.containsKey("child_module"));
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

@@ -30,7 +30,7 @@ public class ModuleExecutionContext {
         this.moduleName = builder.moduleName;
         this.components = Collections.unmodifiableMap(builder.components);
         this.coreComponentIds = Collections.unmodifiableList(builder.coreComponentIds);
-        this.modulePath = Collections.unmodifiableList(builder.modulePath);
+        this.modulePath = Collections.unmodifiableList(normalizeModulePath(builder.modulePath, builder.moduleName));
         this.absoluteDocsPath = builder.absoluteDocsPath;
         this.absoluteRepoPath = builder.absoluteRepoPath;
         this.maxDepth = builder.maxDepth;
@@ -94,6 +94,14 @@ public class ModuleExecutionContext {
     public String getCustomInstructions() { return customInstructions; }
     public ModuleTreeManager getModuleTreeManager() { return moduleTreeManager; }
     public ModuleSummaryContext getSummaryContext() { return summaryContext; }
+
+    private static List<String> normalizeModulePath(List<String> path, String moduleName) {
+        List<String> normalized = new ArrayList<String>(path);
+        if (normalized.isEmpty() || !moduleName.equals(normalized.get(normalized.size() - 1))) {
+            normalized.add(moduleName);
+        }
+        return normalized;
+    }
 
     public static final class Builder {
         private String moduleName;
