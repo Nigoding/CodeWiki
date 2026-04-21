@@ -1,34 +1,70 @@
-You are organizing a large code module into smaller documentation modules before documentation generation.
+你是一个Java代码模块分组专家。你的任务是将一个大模块的组件按业务领域拆分为更小的、内聚的子模块。
 
-<TASK>
-Group the given core components of `{module_name}` into 2 or more smaller, cohesive child modules when a clean split exists.
-</TASK>
+## 任务
 
-<RULES>
-- Component IDs are class fully qualified names, for example `com.example.auth.AuthService`.
-- Use only the component IDs provided in `<POTENTIAL_CORE_COMPONENTS>`.
-- Every provided component ID must appear in exactly one child module.
-- Do not duplicate a component across child modules.
-- Create child modules only when the split is clear and cohesive.
-- Prefer grouping components that share a clear package prefix, such as `com.example.auth.*` or `com.example.order.controller.*`.
-- Use naming conventions like `*Controller`, `*Service`, `*Repository`, or `*Mapper` only as supporting signals.
-- Make sure the grouped result covers all provided components.
-- If no meaningful split exists, return an empty JSON object.
-- Return strict JSON inside `<GROUPED_COMPONENTS>` as:
-  top-level object: child module name -> array of component IDs
-  example entry: "child_module_name": ["component.id.One", "component.id.Two"]
-- Do not include comments, Markdown code fences, or extra prose inside `<GROUPED_COMPONENTS>`.
-</RULES>
+将 `{module_name}` 的 **{component_count}** 个核心组件按业务领域分成 2 个或更多内聚的子模块。
+
+## 分组步骤
+
+请严格按以下步骤执行：
+
+**第一步：识别业务领域**
+从组件的全限定类名中提取业务领域关键词。注意：controller、service、repository、mapper、entity、dto、vo、config、impl 这些是技术层级后缀，不是业务领域。
+例如：
+- `com.example.order.controller.OrderController` → 业务领域是 "order"
+- `com.example.order.service.OrderService` → 业务领域也是 "order"
+- `com.example.order.service.impl.OrderServiceImpl` → 业务领域也是 "order"
+- `com.example.payment.PaymentService` → 业务领域是 "payment"
+以上 order 相关的三个组件必须归入同一子模块，不能因为 controller/service/impl 子包不同而拆开。
+
+**第二步：按业务领域分组**
+将属于同一业务领域的所有组件（无论它是 Controller、Service、Repository 还是其他层级）归入同一子模块。
+判断业务领域的方法：去掉路径中的技术层级包名（controller、service、repository、mapper、entity、dto、vo、config、impl、domain、model）后，剩余的包路径相同的组件属于同一业务领域。
+
+**第三步：处理无法归类的组件**
+如果某些组件无法归入任何业务领域分组，将它们放入一个兜底子模块（命名为 `{module_name}-general`）。**禁止丢弃任何组件。**
+
+**第四步：自检**
+输出前逐一核对：
+- 统计你输出的所有组件ID总数，必须恰好等于 {component_count}
+- `<POTENTIAL_CORE_COMPONENTS>` 中的每个ID都出现且仅出现一次
+- 没有编造任何不在输入列表中的ID
+- 同一业务领域的 Controller、Service、Repository 等没有被拆分到不同子模块
+
+## 约束条件
+
+- 组件ID是Java类的全限定名，例如 `com.example.auth.AuthService`
+- 只能使用 `<POTENTIAL_CORE_COMPONENTS>` 中提供的组件ID，禁止编造
+- 每个组件ID必须恰好出现在一个子模块中，不允许重复，不允许遗漏
+- 同一业务领域的 Controller、Service、Repository、Mapper 必须在同一子模块
+- 仅在存在清晰的业务领域拆分时才创建子模块
+- 如果没有合理的拆分方式，返回空JSON对象
+
+## 当前模块树
 
 <CURRENT_MODULE_TREE>
 {module_tree_context}
 </CURRENT_MODULE_TREE>
 
+## 待分组的组件（共 {component_count} 个）
+
 <POTENTIAL_CORE_COMPONENTS>
 {potential_core_components}
 </POTENTIAL_CORE_COMPONENTS>
 
-Respond with:
+## 输出格式
+
+你必须严格按照以下格式输出，不允许省略标签：
+
+<FORMAT_EXAMPLE>
 <GROUPED_COMPONENTS>
-strict JSON object only
+{format_example}
 </GROUPED_COMPONENTS>
+</FORMAT_EXAMPLE>
+
+格式要求：
+1. 必须以 <GROUPED_COMPONENTS> 开头，以 </GROUPED_COMPONENTS> 结尾
+2. 标签内只放JSON对象，不要包含注释、Markdown代码块或任何其他文字
+3. 如果没有合理的拆分方式，标签内放空JSON对象
+
+现在请输出你的分组结果：

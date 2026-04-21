@@ -129,6 +129,8 @@ public class PromptBuilderService {
         String moduleTreeContext = formatModuleTree(ctx.getModuleTreeManager().getReadOnlySnapshot(), ctx.getModuleName());
         vars.put("module_tree_context", moduleTreeContext.isEmpty() ? "(empty)" : moduleTreeContext);
         vars.put("potential_core_components", formatPotentialCoreComponents(ctx, false));
+        vars.put("component_count", ctx.getCoreComponentIds().size());
+        vars.put("format_example", "{\"auth-module\": [\"com.example.auth.AuthService\", \"com.example.auth.AuthController\"], \"order-module\": [\"com.example.order.OrderService\"]}");
         return new PromptTemplate(clusterModuleTemplate).render(vars);
     }
 

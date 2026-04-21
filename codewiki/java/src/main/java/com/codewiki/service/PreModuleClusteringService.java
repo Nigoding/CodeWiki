@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
+import com.codewiki.domain.Node;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -110,10 +112,19 @@ public class PreModuleClusteringService {
         }
         int start = response.indexOf("<GROUPED_COMPONENTS>");
         int end = response.indexOf("</GROUPED_COMPONENTS>");
-        if (start < 0 || end < 0 || end <= start) {
+        if (start >= 0 && end > start) {
+            return response.substring(start + "<GROUPED_COMPONENTS>".length(), end).trim();
+        }
+        return extractJsonFallback(response);
+    }
+
+    private String extractJsonFallback(String response) {
+        int braceStart = response.indexOf('{');
+        int braceEnd = response.lastIndexOf('}');
+        if (braceStart < 0 || braceEnd <= braceStart) {
             return null;
         }
-        return response.substring(start + "<GROUPED_COMPONENTS>".length(), end).trim();
+        return response.substring(braceStart, braceEnd + 1).trim();
     }
 
     private PreClusterPlan validatePlan(Map<String, List<String>> raw, ModuleExecutionContext ctx) {
@@ -139,9 +150,9 @@ public class PreModuleClusteringService {
             List<String> cleaned = new ArrayList<String>();
             for (String componentId : ids) {
                 if (!allowed.contains(componentId) || assigned.contains(componentId)) {
-                    log.warn("[{}] Rejecting invalid pre-cluster plan because component '{}' is unknown or duplicated",
+                    log.warn("[{}] Skipping component '{}': unknown or duplicated",
                             ctx.getModuleName(), componentId);
-                    return PreClusterPlan.empty();
+                    continue;
                 }
                 cleaned.add(componentId);
                 assigned.add(componentId);
@@ -156,12 +167,108 @@ public class PreModuleClusteringService {
             return PreClusterPlan.empty();
         }
 
-        if (assigned.size() != allowed.size()) {
-            log.warn("[{}] Rejecting pre-cluster plan because it does not cover all core components exactly once",
-                    ctx.getModuleName());
-            return PreClusterPlan.empty();
+        Set<String> missing = new LinkedHashSet<String>(allowed);
+        missing.removeAll(assigned);
+        if (!missing.isEmpty()) {
+            log.info("[{}] Pre-cluster plan missing {} components, auto-assigning by file path",
+                    ctx.getModuleName(), missing.size());
+            for (String componentId : missing) {
+                String bestModule = findBestModule(componentId, validated, ctx);
+                validated.get(bestModule).add(componentId);
+            }
         }
 
         return PreClusterPlan.of(validated);
+    }
+
+    // ── best-module matching ─────────────────────────────────────────────────
+
+    private static final Set<String> LAYER_SEGMENTS = Set.of(
+            "controller", "service", "repository", "mapper",
+            "entity", "dto", "vo", "config", "impl", "domain", "model"
+    );
+
+    private String findBestModule(String componentId,
+                                  Map<String, List<String>> modules,
+                                  ModuleExecutionContext ctx) {
+        String targetMavenModule = extractMavenModule(componentId, ctx);
+        String targetDomain = extractBusinessDomain(componentId);
+
+        String bestModule = null;
+        int bestScore = -1;
+
+        for (Map.Entry<String, List<String>> entry : modules.entrySet()) {
+            for (String existing : entry.getValue()) {
+                int score = 0;
+                if (targetMavenModule != null) {
+                    String existingMaven = extractMavenModule(existing, ctx);
+                    if (targetMavenModule.equals(existingMaven)) {
+                        score += 1000;
+                    }
+                }
+                score += commonPrefixLength(targetDomain, extractBusinessDomain(existing));
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestModule = entry.getKey();
+                }
+            }
+        }
+
+        if (bestModule != null) {
+            return bestModule;
+        }
+
+        return modules.entrySet().stream()
+                .max(java.util.Comparator.comparingInt(e -> e.getValue().size()))
+                .map(Map.Entry::getKey)
+                .orElse(modules.keySet().iterator().next());
+    }
+
+    private String extractMavenModule(String componentId, ModuleExecutionContext ctx) {
+        Node node = ctx.getComponents().get(componentId);
+        if (node == null || node.getRelativePath() == null) {
+            return null;
+        }
+        String path = node.getRelativePath().replace('\\', '/');
+        int srcIdx = path.indexOf("/src/");
+        if (srcIdx <= 0) {
+            return null;
+        }
+        return path.substring(0, srcIdx);
+    }
+
+    private String extractBusinessDomain(String componentId) {
+        String pkg = componentId.contains(".")
+                ? componentId.substring(0, componentId.lastIndexOf('.'))
+                : "";
+        StringBuilder sb = new StringBuilder();
+        for (String segment : pkg.split("\\.")) {
+            if (!LAYER_SEGMENTS.contains(segment.toLowerCase())) {
+                if (sb.length() > 0) {
+                    sb.append('.');
+                }
+                sb.append(segment);
+            }
+        }
+        return sb.toString();
+    }
+
+    private int commonPrefixLength(String a, String b) {
+        int len = Math.min(a.length(), b.length());
+        int last = 0;
+        for (int i = 0; i < len; i++) {
+            if (a.charAt(i) != b.charAt(i)) {
+                break;
+            }
+            if (a.charAt(i) == '.') {
+                last = i + 1;
+            }
+        }
+        if (len > 0 && len <= a.length() && len <= b.length()
+                && a.substring(0, len).equals(b.substring(0, len))) {
+            last = len;
+        }
+        return last;
     }
 }
