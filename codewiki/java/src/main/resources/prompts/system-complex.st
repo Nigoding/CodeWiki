@@ -18,7 +18,7 @@
 <可用工具>
 - `str_replace_editor`：创建与编辑文档文件。
 - `read_code_components`：读取摘要中未涵盖的源码依赖。
-- `recall_summary`：将某个核心组件从类级摘要展开为方法级摘要。
+- `recall_summary`：将某个核心组件从类级摘要展开为方法级摘要，也可基于“类 FQN + 方法签名”精确获取单个方法摘要。
 - `generate_sub_module_documentation`：通过子代理为每个子模块生成独立的详细文档。
 </可用工具>
 

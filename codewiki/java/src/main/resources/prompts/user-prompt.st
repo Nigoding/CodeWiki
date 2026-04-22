@@ -23,7 +23,7 @@
 规则：
 1. `<CORE_COMPONENT_SUMMARIES>` 是核心组件源码的压缩替代，优先使用，不要重复请求源码。
 2. `<MODULE_BRIEF>` 用于模块级理解，`<CORE_COMPONENT_SUMMARIES>` 用于组件级理解，二者角色不可互换。
-3. 需要方法级细节时先用 `recall_summary`；必须看源码证据时才用 `read_code_components`。
+3. 需要方法级细节时先用 `recall_summary`；若上下文已给出某类下面的方法签名，可直接基于“类 FQN + 方法签名”按需获取单个方法摘要；必须看源码证据时才用 `read_code_components`。
 4. 源码证据与摘要冲突时以源码为准，并在文档中指出冲突点。
 5. 若 `<CONTEXT_GAPS>` 为空，视为输入已完整，不要调用任何工具，直接进入写作。
 6. 所有生成的文档文件都保存在同一目录，不按模块树层级分目录；引用其他模块文档统一使用 `[ref_module_name](ref_module_name.md)` 相对链接格式。

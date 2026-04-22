@@ -4,6 +4,8 @@ import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.domain.Node;
 import com.codewiki.summary.ModuleSummaryContext;
 import com.codewiki.summary.ModuleSummaryContextLoader;
+import com.codewiki.summary.SummaryElementNames;
+import com.codewiki.summary.SummaryQueryService;
 import com.codewiki.summary.SummaryFormatter;
 import com.codewiki.summary.dto.MethodSummaryRecord;
 import com.codewiki.util.Texts;
@@ -12,7 +14,6 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -21,11 +22,14 @@ import java.util.Set;
 public class RecallSummaryTools {
 
     private final ModuleSummaryContextLoader summaryContextLoader;
+    private final SummaryQueryService summaryQueryService;
     private final SummaryFormatter summaryFormatter;
 
     public RecallSummaryTools(ModuleSummaryContextLoader summaryContextLoader,
+                              SummaryQueryService summaryQueryService,
                               SummaryFormatter summaryFormatter) {
         this.summaryContextLoader = summaryContextLoader;
+        this.summaryQueryService = summaryQueryService;
         this.summaryFormatter = summaryFormatter;
     }
 
@@ -55,12 +59,70 @@ public class RecallSummaryTools {
         return sb.toString().trim();
     }
 
+    @Tool("Get the method-level summary for one specific core-component method by using its display signature, e.g. createOrder(java.lang.String).")
+    public String getMethodSummaryBySignature(
+            @ToolParam(description = "Core component class fully qualified name, e.g. com.example.auth.AuthService")
+            String componentId,
+            @ToolParam(description = "Method display signature without the class FQN, e.g. login(java.lang.String,java.lang.String)")
+            String methodSignature,
+            ToolContext toolContext) {
+
+        ModuleExecutionContext ctx = ReadCodeComponentsTools.extractContext(toolContext);
+        if (!isCoreComponentClass(ctx, componentId)) {
+            return "Component is not part of the current module's core components: " + componentId;
+        }
+
+        String normalizedSignature = Texts.trimToEmpty(methodSignature);
+        if (normalizedSignature.isEmpty()) {
+            return "Method signature must not be empty.";
+        }
+
+        MethodSummaryRecord record = resolveMethodBySignature(ctx, componentId, normalizedSignature);
+        if (record == null) {
+            return "No method-level summary found for " + componentId + "#" + normalizedSignature;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Component: ").append(componentId).append("\n");
+        sb.append("Method: ").append(summaryFormatter.formatMethodDisplaySignature(record)).append("\n\n");
+        sb.append(summaryFormatter.formatMethodSummaryRecall(record));
+        return sb.toString().trim();
+    }
+
     private ModuleSummaryContext resolveContext(ModuleExecutionContext ctx) {
         ModuleSummaryContext summaryCtx = ctx.getSummaryContext();
         if (summaryCtx == null) {
             summaryCtx = summaryContextLoader.load(ctx);
         }
         return summaryCtx;
+    }
+
+    private MethodSummaryRecord resolveMethodBySignature(ModuleExecutionContext ctx,
+                                                         String componentId,
+                                                         String methodSignature) {
+        ModuleSummaryContext summaryCtx = resolveContext(ctx);
+        for (MethodSummaryRecord record : summaryCtx.getMethodSummariesByClass(componentId)) {
+            String displaySignature = summaryFormatter.formatMethodDisplaySignature(record);
+            if (methodSignature.equals(displaySignature)) {
+                return record;
+            }
+        }
+
+        String methodName = SummaryElementNames.extractMethodName(componentId + "#" + methodSignature);
+        String rawSignature = SummaryElementNames.extractMethodSignature(componentId + "#" + methodSignature);
+        if (methodName.isEmpty()) {
+            return null;
+        }
+        return summaryQueryService.findMethodSummary(deriveProjectName(ctx), componentId, methodName, rawSignature);
+    }
+
+    private String deriveProjectName(ModuleExecutionContext ctx) {
+        String repoPath = ctx.getAbsoluteRepoPath();
+        if (repoPath == null || repoPath.isEmpty()) {
+            return ctx.getModuleName();
+        }
+        int normalized = Math.max(repoPath.lastIndexOf('/'), repoPath.lastIndexOf('\\'));
+        return normalized < 0 ? repoPath : repoPath.substring(normalized + 1);
     }
 
     private boolean isCoreComponentClass(ModuleExecutionContext ctx, String componentId) {

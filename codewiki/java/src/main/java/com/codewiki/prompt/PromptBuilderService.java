@@ -285,8 +285,8 @@ public class PromptBuilderService {
             List<String> idsInFile = entry.getValue();
             StringBuilder section = new StringBuilder();
 
-            section.append("# File: ").append(relativePath).append("\n\n");
-            section.append("## Core Components in this file:\n");
+            section.append("# 文件：").append(relativePath).append("\n\n");
+            section.append("## 该文件中的核心组件：\n");
             for (String id : idsInFile) {
                 section.append("- ").append(id).append("\n");
             }
@@ -299,7 +299,7 @@ public class PromptBuilderService {
             }
             String lang = EXTENSION_TO_LANGUAGE.getOrDefault(ext, "");
 
-            section.append("\n## File Content:\n```").append(lang).append("\n");
+            section.append("\n## 文件内容：\n```").append(lang).append("\n");
 
             // Read the actual file content from the first component
             Node firstNode = ctx.getComponents().get(idsInFile.get(0));
@@ -308,7 +308,7 @@ public class PromptBuilderService {
                         firstNode.getContent(),
                         Math.max(0, maxTokens - currentTokens - 30)));
             } else {
-                section.append("// Error: file content not available");
+                section.append("// 错误：文件内容不可用");
             }
             section.append("\n```\n\n");
 
@@ -341,12 +341,12 @@ public class PromptBuilderService {
 
     private String renderModuleContext(ModuleExecutionContext ctx) {
         StringBuilder sb = new StringBuilder();
-        sb.append("- Module: ").append(ctx.getModuleName()).append("\n");
+        sb.append("- 模块名：").append(ctx.getModuleName()).append("\n");
         List<String> coreNames = collectCoreComponentNames(ctx);
         if (!coreNames.isEmpty()) {
-            sb.append("- Core components: ").append(String.join(", ", coreNames)).append("\n");
+            sb.append("- 核心组件：").append(String.join(", ", coreNames)).append("\n");
         }
-        sb.append("- Module tree:\n")
+        sb.append("- 模块树：\n")
                 .append(formatModuleTree(ctx.getModuleTreeManager().getReadOnlySnapshot(), ctx.getModuleName()));
         return sb.toString().trim();
     }
@@ -405,45 +405,45 @@ public class PromptBuilderService {
         try {
             return new String(Files.readAllBytes(Paths.get(docsPath, moduleName + ".md")));
         } catch (IOException e) {
-            return "(missing child module doc: " + moduleName + ".md)";
+            return "（缺失子模块文档：" + moduleName + ".md）";
         }
     }
 
     private String renderModuleBrief(ModuleBrief brief) {
         StringBuilder sb = new StringBuilder();
-        sb.append("- Module purpose: ").append(brief.getModulePurpose()).append("\n");
+        sb.append("- 模块目的：").append(brief.getModulePurpose()).append("\n");
 
         if (Texts.trimToEmpty(brief.getBusinessValue()).length() > 0) {
-            sb.append("- Business value: ").append(brief.getBusinessValue()).append("\n");
+            sb.append("- 业务价值：").append(brief.getBusinessValue()).append("\n");
         }
 
         if (!brief.getMainResponsibilities().isEmpty()) {
-            sb.append("- Main responsibilities:\n");
+            sb.append("- 主要职责：\n");
             for (String responsibility : brief.getMainResponsibilities()) {
                 sb.append("  - ").append(responsibility).append("\n");
             }
         }
 
         if (!brief.getKeyComponents().isEmpty()) {
-            sb.append("- Key components: ")
+            sb.append("- 关键组件：")
                     .append(String.join(", ", brief.getKeyComponents()))
                     .append("\n");
         }
 
         if (!brief.getMajorDependencies().isEmpty()) {
-            sb.append("- Major dependencies: ")
+            sb.append("- 主要依赖：")
                     .append(String.join(", ", brief.getMajorDependencies()))
                     .append("\n");
         }
 
         if (!brief.getMajorSideEffects().isEmpty()) {
-            sb.append("- Major side effects: ")
+            sb.append("- 主要副作用：")
                     .append(String.join(", ", brief.getMajorSideEffects()))
                     .append("\n");
         }
 
         if (!brief.getOpenQuestions().isEmpty()) {
-            sb.append("- Open questions:\n");
+            sb.append("- 待确认问题：\n");
             for (String q : brief.getOpenQuestions()) {
                 sb.append("  - ").append(q).append("\n");
             }
@@ -472,11 +472,11 @@ public class PromptBuilderService {
             if (classRecord != null) {
                 sb.append(summaryFormatter.formatCoreComponentSummary(
                         classRecord,
-                        selectRepresentativeMethods(node, summaryCtx)));
+                        selectMethodSignatures(node, summaryCtx)));
             } else {
-                sb.append("- Component: ")
+                sb.append("- 组件：")
                         .append(Texts.trimToEmpty(node.getName()))
-                        .append("\n  Summary coverage: class summary missing; use recall_summary if this component becomes important.");
+                        .append("\n  摘要覆盖情况：缺少类级摘要；如果该组件变得重要，请使用 recall_summary 补充。");
             }
         }
         return sb.toString().trim();
@@ -499,16 +499,16 @@ public class PromptBuilderService {
             }
             ClassSummaryRecord classRecord = resolveClassSummary(node, summaryCtx);
             if (classRecord == null) {
-                gaps.add("No class summary is available for core component " + Texts.trimToEmpty(node.getName()) + ".");
+                gaps.add("核心组件 " + Texts.trimToEmpty(node.getName()) + " 缺少类级摘要。");
                 continue;
             }
-            if (selectRepresentativeMethods(node, summaryCtx).isEmpty()) {
-                gaps.add("Representative method behavior is missing for core component " + classRecord.getClassName() + ".");
+            if (selectMethodSignatures(node, summaryCtx).isEmpty()) {
+                gaps.add("核心组件 " + classRecord.getClassName() + " 缺少代表性方法行为摘要。");
             }
         }
 
         if (gaps.isEmpty()) {
-            return "- Current summaries cover the main core components. Use recall_summary first if more detail is needed.";
+            return "";
         }
 
         StringBuilder sb = new StringBuilder();
@@ -536,7 +536,7 @@ public class PromptBuilderService {
         if (text.length() <= maxChars) {
             return text;
         }
-        return text.substring(0, maxChars) + "\n// [truncated source context]";
+        return text.substring(0, maxChars) + "\n// [源码上下文已截断]";
     }
 
     private ModuleSummaryContext resolveSummaryContext(ModuleExecutionContext ctx) {
@@ -567,7 +567,7 @@ public class PromptBuilderService {
         return classFqn.isEmpty() ? null : summaryCtx.getClassSummary(classFqn);
     }
 
-    private List<MethodSummaryRecord> selectRepresentativeMethods(Node node, ModuleSummaryContext summaryCtx) {
+    private List<MethodSummaryRecord> selectMethodSignatures(Node node, ModuleSummaryContext summaryCtx) {
         String classFqn = Texts.trimToEmpty(node.getClassFqn());
         if (classFqn.isEmpty()) {
             return Collections.emptyList();
@@ -576,7 +576,7 @@ public class PromptBuilderService {
         if (methods.isEmpty()) {
             return Collections.emptyList();
         }
-        return methods.subList(0, Math.min(2, methods.size()));
+        return methods.subList(0, Math.min(promptContextProperties.getMaxMethodSummaries(), methods.size()));
     }
 
 }

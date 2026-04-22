@@ -93,26 +93,31 @@ public class SummaryFormatter {
     }
 
     public String formatCoreComponentSummary(ClassSummaryRecord classRecord,
-                                             List<MethodSummaryRecord> representativeMethods) {
+                                             List<MethodSummaryRecord> methodRecords) {
         StringBuilder sb = new StringBuilder();
-        sb.append("- Component: ").append(classRecord.getClassName()).append("\n");
+        sb.append("- 组件：").append(classRecord.getClassName()).append("\n");
         if (Texts.trimToEmpty(classRecord.getRole()).length() > 0) {
-            sb.append("  Role: ").append(Texts.trimToEmpty(classRecord.getRole())).append("\n");
+            sb.append("  角色：").append(Texts.trimToEmpty(classRecord.getRole())).append("\n");
         }
         if (Texts.trimToEmpty(classRecord.getPurpose()).length() > 0) {
-            sb.append("  Purpose: ").append(Texts.trimToEmpty(classRecord.getPurpose())).append("\n");
+            sb.append("  目的：").append(Texts.trimToEmpty(classRecord.getPurpose())).append("\n");
         }
         if (Texts.trimToEmpty(classRecord.getKeyFunctionality()).length() > 0) {
-            sb.append("  Key behavior: ").append(Texts.trimToEmpty(classRecord.getKeyFunctionality())).append("\n");
+            sb.append("  关键行为：").append(Texts.trimToEmpty(classRecord.getKeyFunctionality())).append("\n");
         }
-        if (representativeMethods != null && !representativeMethods.isEmpty()) {
-            sb.append("  Representative methods:\n");
-            int limit = Math.min(2, representativeMethods.size());
-            for (int i = 0; i < limit; i++) {
-                sb.append("    - ").append(formatMethodSummaryBrief(representativeMethods.get(i))).append("\n");
+        if (methodRecords != null && !methodRecords.isEmpty()) {
+            sb.append("  可按需展开的方法签名：\n");
+            for (MethodSummaryRecord methodRecord : methodRecords) {
+                sb.append("    - ").append(formatMethodDisplaySignature(methodRecord)).append("\n");
             }
         }
         return sb.toString().trim();
+    }
+
+    public String formatMethodDisplaySignature(MethodSummaryRecord record) {
+        String displaySignature = SummaryElementNames.extractMethodDisplaySignature(
+                Texts.trimToEmpty(record.getMethodId()));
+        return displaySignature.isEmpty() ? record.getMethodName() : displaySignature;
     }
 
     public String formatPackageSummary(PackageSummaryRecord record) {

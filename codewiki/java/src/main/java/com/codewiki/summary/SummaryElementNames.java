@@ -35,6 +35,23 @@ public final class SummaryElementNames {
         return methodElementName.substring(hashIdx + 1, parenIdx);
     }
 
+    public static String extractMethodDisplaySignature(String methodElementName) {
+        int hashIdx = methodElementName.indexOf('#');
+        if (hashIdx < 0 || hashIdx + 1 >= methodElementName.length()) {
+            return methodElementName;
+        }
+        return methodElementName.substring(hashIdx + 1);
+    }
+
+    public static String extractMethodSignature(String methodElementName) {
+        int parenStart = methodElementName.indexOf('(');
+        int parenEnd = methodElementName.lastIndexOf(')');
+        if (parenStart < 0 || parenEnd < parenStart) {
+            return "";
+        }
+        return methodElementName.substring(parenStart + 1, parenEnd);
+    }
+
     public static String md5(String value) {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");

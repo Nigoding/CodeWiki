@@ -105,8 +105,11 @@ class PromptBuilderServiceTest {
         assertTrue(prompt.contains("<CORE_COMPONENT_SUMMARIES>"));
         assertTrue(prompt.contains("<CONTEXT_GAPS>"));
         assertTrue(prompt.contains("Coordinates module operations."));
-        assertTrue(prompt.contains("Validates inputs and dispatches the workflow."));
+        assertTrue(prompt.contains("可按需展开的方法签名"));
+        assertTrue(prompt.contains("run()"));
+        assertFalse(prompt.contains("Validates inputs and dispatches the workflow."));
         assertFalse(prompt.contains("public void method0"));
+        assertFalse(prompt.contains("Current summaries cover the main core components."));
     }
 
     @Test
@@ -145,7 +148,7 @@ class PromptBuilderServiceTest {
         String prompt = service.buildUserPrompt(buildContext("fat_module", generateLargeContent()));
 
         assertTrue(prompt.contains("<OPTIONAL_SOURCE_CONTEXT>"));
-        assertTrue(prompt.contains("## File Content:"));
+        assertTrue(prompt.contains("## 文件内容："));
     }
 
     private ModuleExecutionContext buildContext(String moduleName, String content) {
