@@ -1,9 +1,8 @@
-Generate comprehensive documentation for the {module_name} module using the provided module context and summarized core component information.
+基于下列上下文，为模块 {module_name} 生成文档。
 
 <MODULE_CONTEXT>
 {module_context}
 </MODULE_CONTEXT>
-* NOTE: You can refer the other modules in the module tree based on the dependencies between their core components to make the documentation more structured and avoid repeating the same information. Know that all documentation files are saved in the same folder not structured as module tree. e.g. [alt text]([ref_module_name].md)
 
 <MODULE_BRIEF>
 {module_brief}
@@ -21,9 +20,11 @@ Generate comprehensive documentation for the {module_name} module using the prov
 {core_components}
 </OPTIONAL_SOURCE_CONTEXT>
 
-Rules:
-1. Treat core component summaries as the compressed substitute for raw core component code.
-2. Use module brief for module-level understanding and core component summaries for component-level understanding.
-3. Use recall_summary first when more detail is needed; use read_code_components only when direct source evidence is required.
-4. If source evidence conflicts with summaries, source evidence wins.
-5. Prefer linking to other module documents instead of duplicating details.
+规则：
+1. `<CORE_COMPONENT_SUMMARIES>` 是核心组件源码的压缩替代，优先使用，不要重复请求源码。
+2. `<MODULE_BRIEF>` 用于模块级理解，`<CORE_COMPONENT_SUMMARIES>` 用于组件级理解，二者角色不可互换。
+3. 需要方法级细节时先用 `recall_summary`；必须看源码证据时才用 `read_code_components`。
+4. 源码证据与摘要冲突时以源码为准，并在文档中指出冲突点。
+5. 若 `<CONTEXT_GAPS>` 为空，视为输入已完整，不要调用任何工具，直接进入写作。
+6. 所有生成的文档文件都保存在同一目录，不按模块树层级分目录；引用其他模块文档统一使用 `[ref_module_name](ref_module_name.md)` 相对链接格式。
+7. 可参考模块树中其他模块的依赖关系来组织文档结构，避免重复介绍共用概念，改为链接过去。

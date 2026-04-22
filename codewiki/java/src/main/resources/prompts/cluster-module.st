@@ -54,7 +54,7 @@
 
 ## 输出格式
 
-你必须严格按照以下格式输出，不允许省略标签：
+输出格式为硬约束，任何偏离都视为失败：
 
 <FORMAT_EXAMPLE>
 <GROUPED_COMPONENTS>
@@ -63,8 +63,11 @@
 </FORMAT_EXAMPLE>
 
 格式要求：
-1. 必须以 <GROUPED_COMPONENTS> 开头，以 </GROUPED_COMPONENTS> 结尾
-2. 标签内只放JSON对象，不要包含注释、Markdown代码块或任何其他文字
-3. 如果没有合理的拆分方式，标签内放空JSON对象
+1. 必须以 `<GROUPED_COMPONENTS>` 开头，以 `</GROUPED_COMPONENTS>` 结尾，标签各出现且仅出现一次。
+2. 标签内只放一个 JSON 对象，不要包含注释、说明文字或任何其他内容。
+3. 禁止使用 markdown 代码块包裹 JSON（不得出现 ```json 或 ```）。
+4. JSON 必须可被 Jackson 直接解析：使用双引号、无尾逗号、无注释、无单引号。
+5. 如果没有合理的拆分方式，标签内放一个空的 JSON 对象（即一对花括号），且不得附加任何解释文字。
+6. `</GROUPED_COMPONENTS>` 之后不得出现任何字符（包括解释、总结、确认语、换行以外的可见字符），输出完立即停止。
 
 现在请输出你的分组结果：
