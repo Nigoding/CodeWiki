@@ -4,6 +4,7 @@ import com.codewiki.config.AgentProperties;
 import com.codewiki.context.ModuleExecutionContext;
 import com.codewiki.domain.Node;
 import com.codewiki.prompt.PromptBuilderService;
+import com.codewiki.util.MavenModuleMatcher;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
@@ -32,11 +33,10 @@ public class ModuleComplexityEvaluator {
         Set<String> hit = new HashSet<String>();
         for (String id : ctx.getCoreComponentIds()) {
             Node node = components.get(id);
-            if (node == null || node.getRelativePath() == null) {
+            if (node == null) {
                 continue;
             }
-            String path = node.getRelativePath().replace('\\', '/');
-            String moduleName = matchMavenModule(path, mavenModules);
+            String moduleName = MavenModuleMatcher.match(node.getRelativePath(), mavenModules);
             if (moduleName != null) {
                 hit.add(moduleName);
                 if (hit.size() > 1) {
@@ -65,34 +65,5 @@ public class ModuleComplexityEvaluator {
         }
         int tokens = promptBuilderService.countCoreComponentTokens(ctx);
         return tokens >= agentProperties.getMaxTokensPerLeafModule();
-    }
-
-    private String matchMavenModule(String normalizedPath, List<String> mavenModules) {
-        String best = null;
-        int bestLen = -1;
-        for (String name : mavenModules) {
-            if (name == null || name.isEmpty()) {
-                continue;
-            }
-            if (containsSegment(normalizedPath, name) && name.length() > bestLen) {
-                best = name;
-                bestLen = name.length();
-            }
-        }
-        return best;
-    }
-
-    private boolean containsSegment(String path, String segment) {
-        int idx = 0;
-        while ((idx = path.indexOf(segment, idx)) >= 0) {
-            boolean leftOk = idx == 0 || path.charAt(idx - 1) == '/';
-            int end = idx + segment.length();
-            boolean rightOk = end == path.length() || path.charAt(end) == '/';
-            if (leftOk && rightOk) {
-                return true;
-            }
-            idx = end;
-        }
-        return false;
     }
 }

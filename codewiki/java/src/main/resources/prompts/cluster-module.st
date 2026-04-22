@@ -7,7 +7,7 @@
 ## 分组步骤
 
 请严格按以下步骤执行：
-
+{maven_module_guidance}
 **第一步：识别业务领域**
 从组件的全限定类名中提取业务领域关键词。注意：controller、service、repository、mapper、entity、dto、vo、config、impl 这些是技术层级后缀，不是业务领域。
 例如：

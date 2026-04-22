@@ -10,6 +10,7 @@ import com.codewiki.summary.SummaryFormatter;
 import com.codewiki.summary.dto.ClassSummaryRecord;
 import com.codewiki.summary.dto.MethodSummaryRecord;
 import com.codewiki.summary.dto.ModuleBrief;
+import com.codewiki.util.MavenModuleMatcher;
 import com.codewiki.util.Texts;
 import com.codewiki.util.TokenCounter;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -24,8 +25,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builds the system and user prompts that are sent to the LLM.
@@ -130,8 +133,44 @@ public class PromptBuilderService {
         vars.put("module_tree_context", moduleTreeContext.isEmpty() ? "(empty)" : moduleTreeContext);
         vars.put("potential_core_components", formatPotentialCoreComponents(ctx, false));
         vars.put("component_count", ctx.getCoreComponentIds().size());
+        vars.put("maven_module_guidance", renderMavenModuleGuidance(ctx));
         vars.put("format_example", "{\"auth-module\": [\"com.example.auth.AuthService\", \"com.example.auth.AuthController\"], \"order-module\": [\"com.example.order.OrderService\"]}");
         return new PromptTemplate(clusterModuleTemplate).render(vars);
+    }
+
+    private String renderMavenModuleGuidance(ModuleExecutionContext ctx) {
+        Set<String> hit = collectSpannedMavenModules(ctx);
+        if (hit.size() <= 1) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n**第零步：优先按 Maven 子模块划分**\n");
+        sb.append("组件列表中每个文件路径前用 `[maven: xxx]` 标注了所属 Maven 子模块。");
+        sb.append("当前组件跨越 ").append(hit.size()).append(" 个 Maven 子模块(")
+                .append(String.join(", ", hit)).append(")。分组时：\n");
+        sb.append("- Maven 子模块是业务边界的强信号，同一 Maven 模块的组件优先归入同一子模块\n");
+        sb.append("- 跨 Maven 子模块的组件原则上不合并，除非业务领域明显一致且合并后更内聚\n");
+        sb.append("- 同一 Maven 子模块内部，再按下面的业务领域规则细分\n");
+        return sb.toString();
+    }
+
+    private Set<String> collectSpannedMavenModules(ModuleExecutionContext ctx) {
+        Set<String> hit = new LinkedHashSet<String>();
+        List<String> mavenModules = ctx.getMavenModules();
+        if (mavenModules == null || mavenModules.size() <= 1) {
+            return hit;
+        }
+        for (String compId : ctx.getCoreComponentIds()) {
+            Node node = ctx.getComponents().get(compId);
+            if (node == null) {
+                continue;
+            }
+            String name = MavenModuleMatcher.match(node.getRelativePath(), mavenModules);
+            if (name != null) {
+                hit.add(name);
+            }
+        }
+        return hit;
     }
 
     public int countClusterInputTokens(ModuleExecutionContext ctx) {
@@ -313,6 +352,9 @@ public class PromptBuilderService {
     }
 
     private String formatPotentialCoreComponents(ModuleExecutionContext ctx, boolean includeSource) {
+        List<String> mavenModules = ctx.getMavenModules();
+        boolean annotateMaven = collectSpannedMavenModules(ctx).size() > 1;
+
         Map<String, List<String>> byFile = new LinkedHashMap<String, List<String>>();
         for (String componentId : ctx.getCoreComponentIds()) {
             Node node = ctx.getComponents().get(componentId);
@@ -326,7 +368,14 @@ public class PromptBuilderService {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, List<String>> entry : byFile.entrySet()) {
             String relativePath = entry.getKey();
-            sb.append("# ").append(relativePath).append("\n");
+            sb.append("# ");
+            if (annotateMaven) {
+                String mavenModule = MavenModuleMatcher.match(relativePath, mavenModules);
+                if (mavenModule != null) {
+                    sb.append("[maven: ").append(mavenModule).append("] ");
+                }
+            }
+            sb.append(relativePath).append("\n");
             for (String componentId : entry.getValue()) {
                 sb.append("  ").append(componentId).append("\n");
             }
