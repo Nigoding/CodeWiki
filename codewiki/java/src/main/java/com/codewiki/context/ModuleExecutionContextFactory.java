@@ -19,6 +19,7 @@ public class ModuleExecutionContextFactory {
                 .currentDepth(task.getCurrentDepth())
                 .customInstructions(task.getCustomInstructions())
                 .moduleTreeManager(moduleTreeManager)
+                .mavenModules(task.getMavenModules())
                 .build();
     }
 }

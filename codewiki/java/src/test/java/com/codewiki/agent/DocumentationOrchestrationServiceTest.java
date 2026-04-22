@@ -225,7 +225,8 @@ class DocumentationOrchestrationServiceTest {
                 "/repo",
                 3,
                 1,
-                null);
+                null,
+                Collections.<String>emptyList());
     }
 
     private ModuleExecutionContext buildContext(ModuleTask task, ModuleTreeManager treeManager) {

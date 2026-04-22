@@ -99,6 +99,33 @@ public class ModuleTreeManager {
     // ── read operations ───────────────────────────────────────────────────────
 
     /**
+     * Returns the existing children spec (child name -> component IDs) for the
+     * module identified by {@code modulePath}, or {@code null} if the module has
+     * no children in the tree.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, List<String>> getExistingChildrenSpec(List<String> modulePath) {
+        lock.readLock().lock();
+        try {
+            Map<String, Object> children = navigateToChildren(modulePath);
+            if (children == null || children.isEmpty()) {
+                return null;
+            }
+            Map<String, List<String>> result = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : children.entrySet()) {
+                Map<String, Object> childNode = (Map<String, Object>) entry.getValue();
+                List<String> components = (List<String>) childNode.get("components");
+                result.put(entry.getKey(), components != null ? components : List.of());
+            }
+            return result;
+        } catch (IllegalStateException e) {
+            return null;
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
      * Returns a deep copy of the whole tree.
      * Safe to pass to prompt builders or serialise to JSON without further locking.
      */

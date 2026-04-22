@@ -25,6 +25,7 @@ public class ModuleExecutionContext {
     private final String customInstructions;
     private final ModuleTreeManager moduleTreeManager;
     private final ModuleSummaryContext summaryContext;
+    private final List<String> mavenModules;
 
     private ModuleExecutionContext(Builder builder) {
         this.moduleName = builder.moduleName;
@@ -38,6 +39,9 @@ public class ModuleExecutionContext {
         this.customInstructions = builder.customInstructions;
         this.moduleTreeManager = builder.moduleTreeManager;
         this.summaryContext = builder.summaryContext;
+        this.mavenModules = builder.mavenModules == null
+                ? Collections.<String>emptyList()
+                : Collections.unmodifiableList(builder.mavenModules);
     }
 
     public static Builder builder() {
@@ -60,6 +64,7 @@ public class ModuleExecutionContext {
                 .currentDepth(this.currentDepth + 1)
                 .customInstructions(this.customInstructions)
                 .moduleTreeManager(this.moduleTreeManager)
+                .mavenModules(this.mavenModules)
                 .build();
     }
 
@@ -80,6 +85,7 @@ public class ModuleExecutionContext {
                 .customInstructions(this.customInstructions)
                 .moduleTreeManager(this.moduleTreeManager)
                 .summaryContext(summaryContext)
+                .mavenModules(this.mavenModules)
                 .build();
     }
 
@@ -94,6 +100,7 @@ public class ModuleExecutionContext {
     public String getCustomInstructions() { return customInstructions; }
     public ModuleTreeManager getModuleTreeManager() { return moduleTreeManager; }
     public ModuleSummaryContext getSummaryContext() { return summaryContext; }
+    public List<String> getMavenModules() { return mavenModules; }
 
     private static List<String> normalizeModulePath(List<String> path, String moduleName) {
         List<String> normalized = new ArrayList<String>(path);
@@ -115,6 +122,7 @@ public class ModuleExecutionContext {
         private String customInstructions;
         private ModuleTreeManager moduleTreeManager;
         private ModuleSummaryContext summaryContext;
+        private List<String> mavenModules;
 
         private Builder() {
         }
@@ -130,6 +138,7 @@ public class ModuleExecutionContext {
         public Builder customInstructions(String v) { this.customInstructions = v; return this; }
         public Builder moduleTreeManager(ModuleTreeManager v) { this.moduleTreeManager = v; return this; }
         public Builder summaryContext(ModuleSummaryContext v) { this.summaryContext = v; return this; }
+        public Builder mavenModules(List<String> v) { this.mavenModules = v; return this; }
 
         public ModuleExecutionContext build() {
             if (moduleName == null) throw new IllegalStateException("moduleName is required");

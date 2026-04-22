@@ -85,6 +85,22 @@ public class DocumentationOrchestrationService {
             return context.getModuleTreeManager().getReadOnlySnapshot();
         }
 
+        Map<String, List<String>> existingChildren = context.getModuleTreeManager()
+                .getExistingChildrenSpec(context.getModulePath());
+        if (existingChildren != null && existingChildren.size() > 1) {
+            log.info("[{}] Reusing existing tree split ({} children), skipping LLM clustering",
+                    context.getModuleName(), existingChildren.size());
+            for (Map.Entry<String, List<String>> entry : existingChildren.entrySet()) {
+                ModuleExecutionContext childContext = context.forSubModule(entry.getKey(), entry.getValue());
+                processModuleHierarchyContext(childContext);
+            }
+            parentModuleDocumentationService.generate(
+                    context,
+                    new ArrayList<String>(existingChildren.keySet()),
+                    context.getModuleTreeManager());
+            return context.getModuleTreeManager().getReadOnlySnapshot();
+        }
+
         PreClusterPlan clusterPlan = preModuleClusteringService.cluster(context);
         if (clusterPlan.isEmpty()) {
             return processModuleContext(context);
@@ -124,7 +140,8 @@ public class DocumentationOrchestrationService {
                 context.getAbsoluteRepoPath(),
                 context.getMaxDepth(),
                 context.getCurrentDepth(),
-                context.getCustomInstructions()
+                context.getCustomInstructions(),
+                context.getMavenModules()
         );
 
         persistenceService.persist(task, context, result, context.getModuleTreeManager());

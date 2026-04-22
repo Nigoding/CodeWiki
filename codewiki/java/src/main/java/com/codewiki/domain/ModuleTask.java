@@ -15,6 +15,7 @@ public class ModuleTask {
     private final int maxDepth;
     private final int currentDepth;
     private final String customInstructions;
+    private final List<String> mavenModules;
 
     public ModuleTask(String moduleName,
                       Map<String, Node> components,
@@ -24,7 +25,8 @@ public class ModuleTask {
                       String repoPath,
                       int maxDepth,
                       int currentDepth,
-                      String customInstructions) {
+                      String customInstructions,
+                      List<String> mavenModules) {
         this.moduleName = moduleName;
         this.components = Collections.unmodifiableMap(components);
         this.coreComponentIds = Collections.unmodifiableList(coreComponentIds);
@@ -34,6 +36,9 @@ public class ModuleTask {
         this.maxDepth = maxDepth;
         this.currentDepth = currentDepth;
         this.customInstructions = customInstructions;
+        this.mavenModules = mavenModules == null
+                ? Collections.<String>emptyList()
+                : Collections.unmodifiableList(mavenModules);
     }
 
     public String getModuleName() {
@@ -70,5 +75,9 @@ public class ModuleTask {
 
     public String getCustomInstructions() {
         return customInstructions;
+    }
+
+    public List<String> getMavenModules() {
+        return mavenModules;
     }
 }
