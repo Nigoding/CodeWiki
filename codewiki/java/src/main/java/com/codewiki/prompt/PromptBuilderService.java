@@ -472,11 +472,14 @@ public class PromptBuilderService {
             if (classRecord != null) {
                 sb.append(summaryFormatter.formatCoreComponentSummary(
                         classRecord,
-                        selectMethodSignatures(node, summaryCtx)));
+                        selectMethodSignatures(node, summaryCtx),
+                        Texts.trimToEmpty(node.getRelativePath())));
             } else {
                 sb.append("- 组件：")
                         .append(Texts.trimToEmpty(node.getName()))
-                        .append("\n  摘要覆盖情况：缺少类级摘要；如果该组件变得重要，请使用 recall_summary 补充。");
+                        .append("\n  FQN：").append(Texts.trimToEmpty(node.getClassFqn()))
+                        .append("\n  文件：").append(Texts.trimToEmpty(node.getRelativePath()))
+                        .append("\n  摘要覆盖情况：缺少类级摘要；如果该组件变得重要，请使用 recall_summary 补充方法级摘要，必要时再读取源码。");
             }
         }
         return sb.toString().trim();

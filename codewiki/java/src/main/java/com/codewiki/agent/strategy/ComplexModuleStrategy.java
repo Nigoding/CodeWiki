@@ -9,6 +9,7 @@ import com.codewiki.tools.GenerateSubModuleDocTools;
 import com.codewiki.tools.ReadCodeComponentsTools;
 import com.codewiki.tools.RecallSummaryTools;
 import com.codewiki.tools.StrReplaceEditorTools;
+import com.codewiki.tools.ToolDecisionTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -29,6 +30,7 @@ public class ComplexModuleStrategy implements AgentStrategy {
     private final ChatClient fallbackChatClient;
     private final ReadCodeComponentsTools readTool;
     private final RecallSummaryTools recallSummaryTools;
+    private final ToolDecisionTools toolDecisionTools;
     private final StrReplaceEditorTools editorTool;
     private final GenerateSubModuleDocTools subModuleTool;
     private final PromptBuilderService promptBuilder;
@@ -40,6 +42,7 @@ public class ComplexModuleStrategy implements AgentStrategy {
             @Qualifier("fallback") ChatClient fallbackChatClient,
             ReadCodeComponentsTools readTool,
             RecallSummaryTools recallSummaryTools,
+            ToolDecisionTools toolDecisionTools,
             StrReplaceEditorTools editorTool,
             GenerateSubModuleDocTools subModuleTool,
             PromptBuilderService promptBuilder,
@@ -49,6 +52,7 @@ public class ComplexModuleStrategy implements AgentStrategy {
         this.fallbackChatClient = fallbackChatClient;
         this.readTool           = readTool;
         this.recallSummaryTools = recallSummaryTools;
+        this.toolDecisionTools  = toolDecisionTools;
         this.editorTool         = editorTool;
         this.subModuleTool      = subModuleTool;
         this.promptBuilder      = promptBuilder;
@@ -77,7 +81,7 @@ public class ComplexModuleStrategy implements AgentStrategy {
         String content = client.prompt()
                 .system(promptBuilder.buildComplexSystemPrompt(ctx))
                 .user(promptBuilder.buildUserPrompt(ctx))
-                .tools(recallSummaryTools, readTool, editorTool, subModuleTool)
+                .tools(toolDecisionTools, recallSummaryTools, readTool, editorTool, subModuleTool)
                 .toolContext(Collections.<String, Object>singletonMap(
                         GenerateSubModuleDocTools.CTX_KEY, ctx))
                 .call()

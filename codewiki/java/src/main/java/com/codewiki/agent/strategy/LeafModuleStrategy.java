@@ -8,6 +8,7 @@ import com.codewiki.tools.GenerateSubModuleDocTools;
 import com.codewiki.tools.ReadCodeComponentsTools;
 import com.codewiki.tools.RecallSummaryTools;
 import com.codewiki.tools.StrReplaceEditorTools;
+import com.codewiki.tools.ToolDecisionTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -28,6 +29,7 @@ public class LeafModuleStrategy implements AgentStrategy {
     private final ChatClient fallbackChatClient;
     private final ReadCodeComponentsTools readTool;
     private final RecallSummaryTools recallSummaryTools;
+    private final ToolDecisionTools toolDecisionTools;
     private final StrReplaceEditorTools editorTool;
     private final PromptBuilderService promptBuilder;
     private final DocumentationPersistenceService persistenceService;
@@ -37,6 +39,7 @@ public class LeafModuleStrategy implements AgentStrategy {
             @Qualifier("fallback") ChatClient fallbackChatClient,
             ReadCodeComponentsTools readTool,
             RecallSummaryTools recallSummaryTools,
+            ToolDecisionTools toolDecisionTools,
             StrReplaceEditorTools editorTool,
             PromptBuilderService promptBuilder,
             DocumentationPersistenceService persistenceService) {
@@ -44,6 +47,7 @@ public class LeafModuleStrategy implements AgentStrategy {
         this.fallbackChatClient = fallbackChatClient;
         this.readTool           = readTool;
         this.recallSummaryTools = recallSummaryTools;
+        this.toolDecisionTools  = toolDecisionTools;
         this.editorTool         = editorTool;
         this.promptBuilder      = promptBuilder;
         this.persistenceService = persistenceService;
@@ -70,7 +74,7 @@ public class LeafModuleStrategy implements AgentStrategy {
         String content = client.prompt()
                 .system(promptBuilder.buildLeafSystemPrompt(ctx))
                 .user(promptBuilder.buildUserPrompt(ctx))
-                .tools(recallSummaryTools, readTool, editorTool)
+                .tools(toolDecisionTools, recallSummaryTools, readTool, editorTool)
                 .toolContext(Collections.<String, Object>singletonMap(
                         GenerateSubModuleDocTools.CTX_KEY, ctx))
                 .call()

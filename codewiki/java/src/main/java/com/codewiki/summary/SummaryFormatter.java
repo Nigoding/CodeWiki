@@ -94,8 +94,20 @@ public class SummaryFormatter {
 
     public String formatCoreComponentSummary(ClassSummaryRecord classRecord,
                                              List<MethodSummaryRecord> methodRecords) {
+        return formatCoreComponentSummary(classRecord, methodRecords, classRecord.getRelativePath());
+    }
+
+    public String formatCoreComponentSummary(ClassSummaryRecord classRecord,
+                                             List<MethodSummaryRecord> methodRecords,
+                                             String relativePath) {
         StringBuilder sb = new StringBuilder();
         sb.append("- 组件：").append(classRecord.getClassName()).append("\n");
+        if (Texts.trimToEmpty(classRecord.getComponentId()).length() > 0) {
+            sb.append("  FQN：").append(Texts.trimToEmpty(classRecord.getComponentId())).append("\n");
+        }
+        if (Texts.trimToEmpty(relativePath).length() > 0) {
+            sb.append("  文件：").append(Texts.trimToEmpty(relativePath)).append("\n");
+        }
         if (Texts.trimToEmpty(classRecord.getRole()).length() > 0) {
             sb.append("  角色：").append(Texts.trimToEmpty(classRecord.getRole())).append("\n");
         }
@@ -106,7 +118,7 @@ public class SummaryFormatter {
             sb.append("  关键行为：").append(Texts.trimToEmpty(classRecord.getKeyFunctionality())).append("\n");
         }
         if (methodRecords != null && !methodRecords.isEmpty()) {
-            sb.append("  可按需展开的方法签名：\n");
+            sb.append("  可按需召回的方法：\n");
             for (MethodSummaryRecord methodRecord : methodRecords) {
                 sb.append("    - ").append(formatMethodDisplaySignature(methodRecord)).append("\n");
             }

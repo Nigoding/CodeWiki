@@ -33,11 +33,23 @@ public class RecallSummaryTools {
         this.summaryFormatter = summaryFormatter;
     }
 
-    @Tool("Get method-level summaries for a specific core component when its class-level summary is not enough.")
-    public String getMethodSummariesForComponent(
+    @Tool("Recall method-level summaries for a core component. Pass an empty methodSignature to recall all known methods for the component, or pass one display signature such as createOrder(java.lang.String) to recall a single method.")
+    public String recall_summary(
             @ToolParam(description = "Core component class fully qualified name, e.g. com.example.auth.AuthService")
             String componentId,
+            @ToolParam(description = "Optional method display signature without the class FQN, e.g. login(java.lang.String,java.lang.String). Leave empty to recall all known methods for the component.")
+            String methodSignature,
             ToolContext toolContext) {
+
+        String normalizedSignature = Texts.trimToEmpty(methodSignature);
+        if (!normalizedSignature.isEmpty()) {
+            return getMethodSummaryBySignature(componentId, normalizedSignature, toolContext);
+        }
+
+        return getMethodSummariesForComponent(componentId, toolContext);
+    }
+
+    private String getMethodSummariesForComponent(String componentId, ToolContext toolContext) {
 
         ModuleExecutionContext ctx = ReadCodeComponentsTools.extractContext(toolContext);
         if (!isCoreComponentClass(ctx, componentId)) {
@@ -59,13 +71,7 @@ public class RecallSummaryTools {
         return sb.toString().trim();
     }
 
-    @Tool("Get the method-level summary for one specific core-component method by using its display signature, e.g. createOrder(java.lang.String).")
-    public String getMethodSummaryBySignature(
-            @ToolParam(description = "Core component class fully qualified name, e.g. com.example.auth.AuthService")
-            String componentId,
-            @ToolParam(description = "Method display signature without the class FQN, e.g. login(java.lang.String,java.lang.String)")
-            String methodSignature,
-            ToolContext toolContext) {
+    private String getMethodSummaryBySignature(String componentId, String methodSignature, ToolContext toolContext) {
 
         ModuleExecutionContext ctx = ReadCodeComponentsTools.extractContext(toolContext);
         if (!isCoreComponentClass(ctx, componentId)) {

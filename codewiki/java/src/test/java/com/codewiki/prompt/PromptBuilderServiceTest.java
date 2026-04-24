@@ -105,7 +105,9 @@ class PromptBuilderServiceTest {
         assertTrue(prompt.contains("<CORE_COMPONENT_SUMMARIES>"));
         assertTrue(prompt.contains("<CONTEXT_GAPS>"));
         assertTrue(prompt.contains("Coordinates module operations."));
-        assertTrue(prompt.contains("可按需展开的方法签名"));
+        assertTrue(prompt.contains("FQN：com.example.huge.FatService"));
+        assertTrue(prompt.contains("文件：src/huge/FatService.java"));
+        assertTrue(prompt.contains("可按需召回的方法"));
         assertTrue(prompt.contains("run()"));
         assertFalse(prompt.contains("Validates inputs and dispatches the workflow."));
         assertFalse(prompt.contains("public void method0"));
