@@ -1,179 +1,107 @@
 ---
 name: codewiki
 description: >
-  为代码仓库生成分层 wiki 文档。
-  当用户希望对代码仓库进行文档化、分析架构、理解模块关系或创建 wiki 时使用。
-  支持 Java、Python、C# 等多种语言。
+  使用 CodeWiki MCP 的代码分析结果，为代码仓库生成分层 wiki 文档。
+  当用户要求文档化代码仓库、生成架构文档、解释模块关系、创建代码 wiki，
+  或重新生成已有代码 wiki 时使用。
 ---
 
-# CodeWiki — 分层仓库文档生成
+# CodeWiki 分层仓库文档生成
 
-**设计原则：** CodeWiki 是一个*分析引擎*（通过 MCP 暴露）加上一个*生成策略*（由你执行）。MCP 服务器负责 AST 解析、依赖图构建和基于 LLM 的模块聚类。**你**（Claude）负责使用原生的文件编辑和推理能力来实际撰写文档。
+CodeWiki 将职责严格拆为两部分：
 
----
+- **CodeWiki MCP**：完成 AST 分析、依赖图构建、模块聚类和递归拆分，返回最终稳定的模块树。
+- **当前 Agent**：按分析结果读取代码、撰写文档、建立链接并验证输出。
 
-## 前置条件
+生成过程中不得自行拆分模块、修改模块树或启动子模块生成 Agent。模块划分不合适时，要求 MCP 重新分析或聚类。
 
-1. **CodeWiki MCP 服务器**必须已注册并正在运行。通常在 MCP 客户端中配置如下：
-   ```json
-   {
-     "mcpServers": {
-       "codewiki": {
-         "command": "python",
-         "args": ["-m", "codewiki_mcp.server"]
-       }
-     }
-   }
-   ```
-2. **LLM 凭证**必须对 MCP 服务器可用（通过环境变量或 MCP 服务器配置），用于聚类步骤：
-   ```bash
-   export LLM_BASE_URL="https://api.openai.com/v1"
-   export LLM_API_KEY="sk-..."
-   export MAIN_MODEL="gpt-4o"
-   export CLUSTER_MODEL="gpt-4o-mini"
-   ```
+## 开始前
 
----
+确定以下输入：
 
-## 阶段 1 — 分析仓库（MCP 调用）
+- 目标仓库绝对路径。
+- 输出目录；用户未指定时使用仓库内的 `docs/`。
+- 可选的包含/排除规则、文档类型、关注模块和自定义要求。
 
-调用 MCP 工具 **`analyze_repository`**，传入目标仓库路径。
+CodeWiki MCP 必须提供 [MCP 契约](references/mcp-contract.md) 中定义的分析与按需读取能力。
 
-**参数：**
-- `repo_path`（必填）：仓库的绝对路径。
-- `include_patterns`（可选）：例如 `["*.py", "*.java"]`。
-- `exclude_patterns`（可选）：例如 `["*test*", "*spec*"]`。
-- `skip_clustering`（可选，默认 `false`）：如果只想获取原始组件而不进行 LLM 模块聚类，设为 `true`。
+## 工作流
 
-**工具返回内容：**
+### 1. 获取稳定分析结果
 
-| 字段 | 用途 |
-|------|------|
-| `components` | 所有类 / 接口 / 函数的字典，包含 `source_code`、`depends_on`、`file_path` 等字段。 |
-| `leaf_node_ids` | 依赖图中作为叶子节点的组件 ID 列表。 |
-| `module_tree` | 分层模块分解结果（例如 `{ "Auth": { "components": [...], "children": { ... } } }`）。空 `{}` 表示仓库很小，可直接生成整库文档。 |
-| `processing_order` | 自底向上遍历顺序：**先处理叶子模块，再处理父模块**。 |
+调用 `analyze_repository`。默认启用完整递归聚类，使 MCP 一次性返回最终模块树。
 
-> **注意：** 将返回的数据保留在上下文中（或随时引用）。与旧的基于脚本的工作流不同，分析产物直接通过 MCP 响应返回，而非写入磁盘。
+确认响应至少包含：
 
----
+- `analysis_id`
+- `repo_name`
+- `component_index`
+- `module_tree`
+- `processing_order`
+- `diagnostics`
 
-## 阶段 2 — 生成文档（自底向上）
+将 `diagnostics` 中的错误和降级信息告知用户。存在无法解析的核心源码时，不要静默生成看似完整的文档。
 
-### 2.1 读取处理顺序
+### 2. 检查生成计划
 
-从 MCP 响应中提取 `processing_order`。每个条目格式为 `(module_path_list, module_name)`。**严格按照顺序处理** —— 这能保证每个子模块的 `.md` 文件在生成其父模块概述之前已经存在。
+生成前验证：
 
-### 2.2 加载参考数据
+- `module_tree` 中每个模块具有唯一 `module_id` 和唯一 `doc_path`。
+- 每个模块引用的组件存在于 `component_index`。
+- `processing_order` 覆盖所有模块，且子模块始终早于父模块。
+- 所有 `doc_path` 位于输出目录内。
 
-将 MCP 响应中的 `components` 和 `module_tree` 保留在上下文中。你会通过组件 ID 查找对应的源代码。
+`processing_order` 只包含模块，不包含仓库根总览。完成所有模块后再单独生成 `overview.md`。
 
-如果后续需要查询某个特定组件，且其源代码在初次响应中被截断，可调用 MCP 工具 **`get_component`**，传入 `component_id`。
+若 `module_tree` 为空，跳过模块文档，直接以仓库组件生成 `overview.md`。
 
-### 2.3 逐个处理模块
+### 3. 按顺序生成模块文档
 
-判断当前模块是**叶子模块**还是**父模块**：
+严格按照 `processing_order` 逐个处理模块。
 
-- 当 `module_tree[...][module_name].children` 为空或缺失时，该模块为**叶子模块**。
-- 否则为**父模块**。
+#### 叶子模块
 
-#### 叶子模块策略
+1. 调用 `get_module_context` 获取模块组件、内部依赖、外部依赖和相关源码。
+2. 信息不足时使用 `get_components` 批量补充组件源码。
+3. 按 [模块文档模板](references/module-document-template.md) 的叶子模块规则写入模块的 `doc_path`。
+4. 只描述能够由分析结果或源码支持的行为；不根据命名猜测实现。
 
-1. **收集核心组件**：从 `module_tree[...][module_name].components` 中获取。
-2. **读取源代码**：通过 `components` 字典按组件 ID 查找（ID 格式为 `<file_path>::<name>`）。
-3. 在用户指定的输出目录中**创建 `{module_name}.md`**，内容需包含：
-   - **用途** —— 一段话概括该模块的功能。
-   - **架构** —— Mermaid 图展示内部类 / 接口及其关系（继承、实现、关键方法调用）。
-   - **核心组件** —— 每个组件的职责、公开 API 和值得注意的逻辑。
-   - **依赖关系** —— 当依赖位于本模块之外时，链接到其他模块文档。使用相对 Markdown 链接：`[AuthService](AuthService.md)`。
-   - **数据流** —— 如果模块编排了某个流程，使用 Mermaid 序列图或流程图展示。
+#### 父模块
 
-> **约束：** 不要重复属于子模块文档的信息。如果 `UserService` 依赖 `AuthService`，简要描述交互并链接到 `AuthService.md` 即可。
+1. 读取其直接子模块的文档摘要；仅在需要确认跨模块关系时读取完整子文档。
+2. 调用 `get_module_context` 获取跨子模块依赖和父模块级上下文。
+3. 按 [模块文档模板](references/module-document-template.md) 的父模块规则写入模块的 `doc_path`。
+4. 保持概述级别，链接子模块文档，不重复其组件级内容。
 
-#### 父模块策略
+每次写入 Markdown 后，按照 [Mermaid 规则](references/mermaid-rules.md) 检查并修复图表。
 
-1. **收集子模块上下文** —— 对 `children` 中的每个直接子模块，读取其已生成的 `.md` 文件。
-2. **构建上下文对象**（可在脑中或显式构建）：
-   ```json
-   {
-     "子模块名称": {
-       "docs": "<子模块 markdown 文件的完整内容>",
-       "components": [...]
-     }
-   }
-   ```
-3. **创建 `{module_name}.md`**（根模块则为 `overview.md`），内容需包含：
-   - **用途** —— 该逻辑分组实现了什么功能。
-   - **架构** —— Mermaid 图用**子模块作为方框**（而非单个类），展示子模块之间的交互。
-   - **子模块引用** —— 每个子模块的简要概述，附带指向其文档的 Markdown 链接。
-   - **横切关注点** —— 跨多个子模块的模式或约定。
+### 4. 生成仓库总览
 
-> **约束：** 父模块文档保持*概述级别*。不要直接粘贴子模块文档内容，要提炼总结并链接。
+所有模块完成后，按 [总览模板](references/overview-template.md) 生成 `overview.md`。
 
-### 2.4 根总览（`overview.md`）
+总览必须：
 
-当 `module_path` 为空时（`processing_order` 的最后一个条目代表整个仓库）：
+- 说明仓库用途和系统边界。
+- 展示端到端高层架构。
+- 引用每个顶层模块文档。
+- 总结关键数据流、入口和外部依赖。
 
-- 文件标题为 `overview.md`。
-- 提供端到端的系统架构。
-- 引用每个顶层模块。
-- 包含整个仓库的高层 Mermaid 图。
+### 5. 验证输出
 
----
+完成前检查：
 
-## 输出目录结构
+- `overview.md` 和所有模块 `doc_path` 均存在。
+- 所有内部 Markdown 链接指向存在的文件。
+- 所有 Mermaid 图语法有效，节点与关系有源码或分析依据。
+- 父模块没有大段复制子模块内容。
+- 文档没有引用分析结果中不存在的组件、API 或流程。
+- 输出目录之外没有新增或修改文件。
 
-生成的文档写入用户指定的目录（例如 `./docs/`）：
+简要报告生成文件、分析降级项和未能确认的内容。
 
-```
-docs/
-├── overview.md              # 仓库级总览
-├── module_A.md              # 顶层或叶子模块
-├── module_B.md
-├── submodule_x.md           # 嵌套子模块
-└── （分析结果保留在 MCP 上下文中，不写入磁盘）
-```
+## 失败处理
 
-如果用户希望将原始分析产物持久化，你可以将 MCP 响应字段（`components`、`module_tree`、`processing_order`）作为 JSON 文件保存在 markdown 文档旁边。
-
----
-
-## 增量更新
-
-当用户要求"更新文档"或"变更后重新生成"时：
-
-1. 使用相同的 `repo_path` 再次调用 **`analyze_repository`**。
-2. 将新的 `module_tree` / `components` 与之前的知识对比（或询问用户变更了哪些文件）。
-3. 找出包含变更组件的模块。
-4. 删除受影响的 `{module_name}.md` 文件（以及其父模块的 `.md` 文件，因为父模块概述依赖子模块文档）。
-5. 仅在 `processing_order` 中重新处理被失效的模块及其祖先模块。
-
----
-
-## 独立聚类（高级）
-
-如果你已经从之前的 `analyze_repository` 调用中获得了 `components` 和 `leaf_node_ids`，只想用不同参数重新执行聚类（例如更深的深度、不同的模型），可直接调用 MCP 工具 **`cluster_modules`**：
-
-- `leaf_node_ids`：组件 ID 列表
-- `components`：完整的 components 字典
-- `max_depth`、`max_token_per_module`、`cluster_model`：可选的覆盖参数
-
----
-
-## 故障排查
-
-| 问题 | 解决方案 |
-|------|----------|
-| `components` 字典过大 | 仅将当前模块相关的组件 ID 加载到上下文中，不要一次性实例化整个字典。 |
-| `module_tree` 为 `{}`（空） | 仓库小到可以放入单个上下文窗口。直接从 components 生成单个 `overview.md`。 |
-| 聚类只产生 1 个模块 | LLM 未能找到逻辑分组；回退到整库文档模式（与空树处理相同）。 |
-| 生成父模块时缺少子 `.md` | 处理顺序有误。始终严格遵循 `processing_order`。 |
-| Mermaid 图无法渲染 | 确保语法合法（节点 ID 中不要有特殊字符；如有需要，用引号包裹标签）。 |
-
----
-
-## 设计哲学（供维护者参考）
-
-- **分析是确定性的** —— AST 解析、图构建和拓扑排序都是在 MCP 服务器内部运行的纯代码。
-- **聚类由 LLM 辅助但结构化** —— 单次提示，使用严格的 `<GROUPED_COMPONENTS>` 标签；没有 Agent 循环。
-- **生成是原生 Agent 行为** —— 你（Claude）使用自己的工具撰写文档，由 MCP 响应指导。这消除了原始单体 CodeWiki 架构中存在的"Agent 套 Agent"冗余。
+- MCP 工具不可用：停止生成并说明缺少的工具。
+- 模块树不稳定、存在重复路径或顺序无效：要求 MCP 重新分析，不在生成阶段修补模块树。
+- 单个组件源码过大：使用 `get_components` 分批读取，只加载当前文档所需内容。
+- 模块缺少足够证据：明确记录限制，避免填充推测性说明。
