@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "javawiki-analyzer"
+version = "0.1.0"
+description = "Java-first repository analyzer that emits nanobot documentation artifacts"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1.0",
+    "tree-sitter>=0.23.0",
+    "tree-sitter-java>=0.23.0"
+]
+
+[project.scripts]
+javawiki = "javawiki_analyzer.cli.main:cli"
+
+[tool.setuptools]
+packages = [
+    "javawiki_analyzer",
+    "javawiki_analyzer.artifacts",
+    "javawiki_analyzer.cli",
+    "javawiki_analyzer.graph",
+    "javawiki_analyzer.java",
+    "javawiki_analyzer.maven",
+    "javawiki_analyzer.modules",
+    "javawiki_analyzer.source"
+]
+
