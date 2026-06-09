@@ -65,6 +65,8 @@ javawiki analyze <local-repo-path> -o <analysis-dir> --init-submodules
 
 `candidate_modules.json` 是模型聚合输入；`module_tree.json`、`processing_order.json` 和 `modules/*.json` 是文档生成输入。若执行了模型聚合，必须先更新这些最终文档输入，再开始写 Markdown。
 
+如果用户同时提供 Vue2 前端分析产物，读取 [前端分析产物 Schema](references/frontend-artifact-schema.md)。前端产物用于补充页面入口、用户触发点、API 调用顺序和后端接口使用清单；与后端融合时以 `backend_api_usage.json` 的 `method + path` 匹配后端 `entry_points`。
+
 ## 工作流
 
 ### 1. 检查分析状态
