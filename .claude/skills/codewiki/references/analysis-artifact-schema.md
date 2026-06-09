@@ -26,14 +26,14 @@
 
 重要字段：
 
-- `schema_version`：当前为 `1.0`。
+- `schema_version`：当前为 `1.1`。`1.0` 仍可读取，但缺少 `remote_endpoints` / `external_systems` 字段，远程调用文档质量降级；遇到旧版本应建议用户重新运行 analyzer。
 - `analysis_id`：本次分析 ID。
 - `generated_at`：分析生成时间。
 - `source`：输入类型、原始输入、本地解析路径、仓库名和 Git 信息。
 - `source.submodules`：Git submodule 状态列表；没有 submodule 时为空数组。
 - `build_system`：Maven 根 POM 和递归 Maven module 列表。
 - `artifacts`：其他 artifact 的相对路径。
-- `summary`：语言、Java 文件数、组件数、候选模块数、最终模块数和 REST endpoint 数。
+- `summary`：语言、Java 文件数、组件数、候选模块数、最终模块数、REST endpoint 数、远程出站端点数（`total_remote_endpoints`）、远程客户端组件数（`total_remote_clients`）。
 - `aggregation`：当前模块树来源。`rule_fallback` 表示 analyzer 规则兜底；`agent_llm` 表示 agent 已执行模型聚合。
 - `diagnostics`：解析异常、跳过文件和分析告警。
 
@@ -179,17 +179,33 @@
 - `file_path`
 - `span`
 - `annotations`
-- `stereotype`
+- `stereotype`（新增取值：`remote_client_feign`、`remote_client_http_exchange`）
 - `extends`
 - `implements`
-- `fields`
-- `methods`
+- `fields`：每个字段含 `remote_client_kind`（`rest_template` / `web_client` / `okhttp_client` / `http_client` / `rest_client`），命中表示该字段是远程 HTTP 客户端
+- `methods`：每个方法的 `calls[]` 元素含 `target`、`kind`、`line`、`snippet`、`resolved_component`；额外含 `remote_endpoints`（见下）
 - `entry_points`
+- `remote_endpoints`：聚合视图。每项 `{kind, http_method, target_method, client_field, url, literal_source, line, via_method}`：
+  - `kind`：`rest_template` / `web_client` / `okhttp_client` / `http_client` / `rest_client` / `remote_client_feign` / `remote_client_http_exchange`
+  - `url`：从字符串字面量或 `${...}` 占位符提取；可能为 `null`（无法解析）
+  - `literal_source`：`string` / `placeholder` / `annotation` / `null`
 - `maven_module`
 - `source_code`
 - `diagnostics`
 
 组件可以表示 Java `class`、`interface`、`enum`、`record` 或 `annotation`。
+
+## `modules/*.json`（新增字段）
+
+除原有字段外，叶子模块 JSON 还包含：
+
+- `remote_endpoints`：聚合本模块所有组件的远程出站端点，每项含 `component_id`、`qualified_name`、`file_path` 用于跳转回组件。
+- `external_systems`：去重后的目标主机或占位符变量名列表（如 `api.partner.com`、`partner.gateway.url`）。
+
+## `dependencies.json`（新增字段）
+
+`component_dependencies` 中可能出现 `kind == "remote_call"`，`to_component_id` 形如 `external::<host>` 或 `external::<kind>:unresolved`，表示一次远程出站调用。
+新增顶层 `external_module_dependencies` 列出每个模块到外部系统的聚合边。
 
 ## `modules/*.json`
 

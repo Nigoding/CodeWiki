@@ -49,6 +49,8 @@ def write_artifacts(
             "stereotype": component.stereotype,
             "module_id": component_to_module.get(component.component_id),
             "artifact_path": artifact_path,
+            "remote_endpoint_count": len(component.remote_endpoints),
+            "entry_point_count": len(component.entry_points),
         }
 
     for module_id, module in module_tree["modules"].items():
@@ -56,6 +58,12 @@ def write_artifacts(
             component for component in components if component_to_module.get(component.component_id) == module_id
         ]
         module_dependencies = _module_dependencies(module_id, dependencies_artifact, component_to_module)
+        remote_endpoints_aggregated = [
+            {**endpoint, "component_id": c.component_id, "qualified_name": c.qualified_name, "file_path": c.file_path}
+            for c in module_components
+            for endpoint in c.remote_endpoints
+        ]
+        external_systems = sorted({_external_system_of(endpoint) for endpoint in remote_endpoints_aggregated if _external_system_of(endpoint)})
         module_json = {
             **module,
             "spring_stereotypes": sorted({c.stereotype for c in module_components if c.stereotype}),
@@ -73,6 +81,8 @@ def write_artifacts(
             "internal_dependencies": module_dependencies["internal"],
             "external_dependencies": module_dependencies["external"],
             "entry_points": [entry for c in module_components for entry in c.entry_points],
+            "remote_endpoints": remote_endpoints_aggregated,
+            "external_systems": external_systems,
             "important_files": sorted({c.file_path for c in module_components}),
             "diagnostics": [],
         }
@@ -94,7 +104,7 @@ def base_analysis(
     diagnostics: list[dict],
 ) -> dict:
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "analysis_id": analysis_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": source,
@@ -156,6 +166,17 @@ def _find_parent(module_tree: dict, module_id: str) -> str | None:
     for candidate_id, module in module_tree["modules"].items():
         if module_id in module.get("child_module_ids", []):
             return candidate_id
+    return None
+
+
+def _external_system_of(endpoint: dict) -> str | None:
+    url = endpoint.get("url") or ""
+    match = re.match(r"https?://([^/]+)", url)
+    if match:
+        return match.group(1)
+    placeholder = re.match(r"\$\{([^}/:]+)", url)
+    if placeholder:
+        return placeholder.group(1)
     return None
 
 

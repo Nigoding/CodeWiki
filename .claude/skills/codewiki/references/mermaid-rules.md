@@ -9,6 +9,17 @@
 - 状态变化：`stateDiagram-v2`
 - 决策和处理步骤：`flowchart`
 
+## 强制场景
+
+- **叶子模块文档"架构总览"**：组件数 ≥ 2 必须出 `graph TB`，按 `Presentation / Business / External` 分 subgraph。
+- **叶子模块文档"数据流"**：每个被标记为"重要入口"的 endpoint 必须出一张 `sequenceDiagram`，且：
+  - participant 顺序：`Client → Controller → Service → RemoteClient → External`。
+  - 至少包含一条 `alt ... else` 异常分支（异常 / 超时 / 业务拒绝任选最常见的）。
+  - 远程调用步骤必须显式写出目标 URL（含 `${...}` 占位符或 `<unresolved>`）。
+- **父模块文档"跨模块业务流"**：至少一张跨子模块的 `sequenceDiagram`。
+- **overview.md "系统架构"**：必须含外部系统节点；存在远程调用就必须画出对应边。
+- **overview.md "关键流程"**：2-4 张代表性 `sequenceDiagram`，覆盖核心业务路径，至少一张涉及外部系统。
+
 ## 编写规则
 
 - 节点 ID 使用简短 ASCII 标识符，例如 `auth_service`。

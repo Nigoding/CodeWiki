@@ -73,7 +73,7 @@ javawiki analyze <local-repo-path> -o <analysis-dir> --init-submodules
 
 检查：
 
-- `schema_version` 是否支持。
+- `schema_version` 是否支持。当前 skill 期望 `1.1`；遇到 `1.0` 仍可继续，但必须在最终报告中标注"远程调用信息可能不完整，建议重新运行 analyzer 以获取 `remote_endpoints` / `external_systems`"。低于 `1.0` 直接停止。
 - `summary.language` 是否为 `java`。
 - `build_system.type` 是否为 `maven` 或兼容的未知类型。
 - `summary` 中 Java 文件数、组件数、REST endpoint 数是否符合预期。
@@ -81,6 +81,8 @@ javawiki analyze <local-repo-path> -o <analysis-dir> --init-submodules
 - `aggregation.mode` 是否为 `rule_fallback`；如果是，说明当前模块树还没有经过模型聚合。
 - 是否存在 `submodule_missing`、`submodule_update_failed`、`submodule_init_required`、`maven_module_path_missing` 或 `java_source_not_found` 诊断；如果存在，说明分析结果可能缺少源码或 submodule 中的代码。
 - 如果存在 `java_source_outside_maven_modules`，说明 analyzer 找到了 Maven module 未覆盖的 Java 文件，通常来自 submodule、父 POM 自身源码或非标准目录；生成文档时应把这些临时 source module 当作分析证据，而不是 Maven 真实模块。
+- 如果存在 `no_root_pom_discovered_subprojects`，说明仓库根没有 `pom.xml`，analyzer 已自动在子目录中发现 N 个独立 Maven 项目作为根（典型场景：容器仓库 + 多 Git submodule）。读取 `build_system.discovered_subproject_roots` 拿到自动识别出的子项目根列表；文档生成时应把每个子项目根视为独立的业务子系统（而非同一应用的不同分层模块），并在总览"分析说明"中明示该仓库是容器仓库结构。若同时存在 `submodule_missing`，说明部分子项目源码尚未拉取，文档中相关子项目应标注"源码缺失，本次未分析"。
+- 如果存在 `no_pom_found`，说明整个仓库及子目录都找不到 `pom.xml`，analyzer 只能把整个仓库当作单一 Java 源码根处理；此时模块划分基于目录结构，不代表 Maven 真实组织，必须在文档中提示用户。
 
 如果存在解析失败、跳过核心文件或依赖图异常，先向用户说明影响。
 如果存在 submodule 或 Maven module 缺失诊断，正式文档生成前应建议用户重新拉取/初始化 submodule 后重跑 analyzer；用户仍要求继续时，必须在总览的“分析说明”中标注缺失范围。
@@ -140,20 +142,71 @@ javawiki analyze <local-repo-path> -o <analysis-dir> --init-submodules
 
 计划无效时停止生成，列出缺少或冲突的文件和字段。
 
+### 4.5 入口流程清单生成
+
+写文档前，必须先扫描所有叶子模块产出"入口流程清单"，作为后续写作的依据。该清单不写入磁盘，仅作为本次生成的工作内存。
+
+步骤：
+
+1. 遍历每个叶子模块 `modules/<module_id>.json` 的 `entry_points`，加上每个组件 `components/*.json` 中的 `entry_points`（REST endpoint 与 outbound endpoint 都纳入）；以及 `@Scheduled` / `@RabbitListener` / `@KafkaListener` / `@EventListener` 注解的方法（来自 `components/*.json.methods[].annotations`）。
+2. 对每个入口，沿 `methods[].calls[].resolved_component` 递归还原调用链。递归限深 6，去环（同一 `component_id` 在一条链上不重复展开）。
+3. 同时记录命中的 `remote_endpoints`（来自每个被访问组件的顶层 `remote_endpoints` 或方法内嵌 `remote_endpoints`）。
+4. 对每个入口判定是否为 **重要入口**，命中任一即标记：
+   - 调用深度 ≥ 3；
+   - 调用链命中至少一个 `remote_endpoints` 项（不论 analyzer 提取的 URL 是否完整）；
+   - 调用链跨越 ≥ 2 个不同 stereotype；
+   - 入口本身是 `@Scheduled` / 消息消费者 / 事件监听。
+5. 阈值可由用户在 prompt 中覆盖（如 "把所有 endpoint 都当作重要入口"）。
+6. 若 `schema_version < 1.1` 或 `summary.total_remote_endpoints` 字段缺失，按 [远程调用 fallback 识别](references/remote-call-recognition.md) 在写文档时补充识别。
+
+清单输出形态（仅工作内存）：
+
+- 每个模块一组 `{重要入口列表, 次要入口列表, 命中的外部系统集合}`。
+- 重要入口需含：`entry_qualified_name#method`、`file_path:Lstart-Lend`、调用链节点序列（含每步行号）、命中的 remote_endpoints 列表。
+
 ### 5. 生成模块文档
 
-严格按照 `processing_order.json.steps` 处理模块。
+#### 5.1 选择文档结构
 
-每个模块：
+读完 §4.5 清单后，统计叶子模块数：
+
+- **叶子模块数 ≤ 8**：使用扁平结构。直接在文档输出根目录写 `<module_name>.md`（如 `docs/order.md`），不进入 `modules/` 子目录；忽略原 `module_tree.json` 中的父/叶嵌套，所有模块平铺。`overview.md` 链接直接指向这些文件。
+- **叶子模块数 > 8**：保留 `module_tree.json` 中的父/叶嵌套，按原 `doc_path` 写入；父模块文档负责导航到子模块。
+
+不论何种结构，每个模块的 `doc_path` 必须唯一，且最终写入位置必须在文档输出目录内。如果实际写入路径与 `module_tree.json` 中记录的 `doc_path` 不一致（扁平化重写），在最终报告中说明。
+
+#### 5.2 处理顺序
+
+严格按照 `processing_order.json.steps` 处理模块。叶子模块在前，父模块在后（即使采用扁平结构，仍按此顺序保证内部一致性）。
+
+#### 5.3 叶子模块写作流程
 
 1. 读取 `modules/<module_id>.json`。
-2. 根据 `kind` 和 `child_module_ids` 判断叶子模块或父模块。
-3. 叶子模块只按需读取组件详情 JSON，优先读取 Controller、Service、Repository、Configuration、领域模型、远程客户端、消息处理器、任务处理器和跨模块依赖来源。
-4. 父模块只总结直接子模块和模块级依赖，链接子模块文档，不复制组件细节。
-5. 写入模块自己的 `doc_path`。
-6. 检查 Markdown 链接和 Mermaid 图。
+2. 按需读取组件详情 JSON，优先读取 Controller、Service、Configuration、领域模型、远程客户端、消息处理器、任务处理器和跨模块依赖来源；DTO/VO/枚举仅在决定流程时读取。
+3. 按 [模块文档模板](references/module-document-template.md) §"叶子模块" 的 10 段固定章节顺序输出。**章节顺序不得调整，不得跳过**；无内容的章节写"无（说明原因）"。
+4. **第 4 节"数据流"**：对 §4.5 清单中本模块所有**重要入口**，严格按 [流程章节模板](references/flow-section-template.md) §2 展开（含 sequenceDiagram + 编号步骤 + 行号锚点 + alt 异常分支）；**次要入口**按 §3 简写。
+5. **第 5 节"集成点"**：使用 `modules/*.json.remote_endpoints` 直接填表；若该字段为空但 fallback 识别到远程调用，按 [远程调用识别](references/remote-call-recognition.md) 填表并标"来源 = fallback"。
+6. 每个 Spring 组件标题下**必须**紧跟 `**File**: <file_path>`。
+7. 所有源码引用必须含 `<file_path>:Lstart-Lend`；找不到行号时显式标注"行号未知"。
+8. 写入模块的最终 `doc_path`（按 §5.1 决定的结构）。
+9. 检查 Markdown 链接和 Mermaid 图。
 
-文档结构参考 [模块文档模板](references/module-document-template.md)，图表规则参考 [Mermaid 规则](references/mermaid-rules.md)。
+#### 5.4 父模块写作流程（仅在分层结构下使用）
+
+1. 读取 `modules/<module_id>.json` + 子模块的 `entry_points` 与 `external_systems` 汇总。
+2. 按模板"父模块"6 段结构输出。
+3. **第 4 节"跨模块业务流"**：必须至少一张跨越多个子模块的 sequenceDiagram，按 [流程章节模板](references/flow-section-template.md) §2 展开（含行号锚点 + alt 分支）。不要写"API → Application → Domain → Persistence"这种空泛分层套话。
+4. 不复制子模块组件细节。
+
+#### 5.5 硬约束
+
+以下任一项违反必须修复后才能进入下一步：
+
+- 每个重要入口对应的"数据流"段缺少 sequenceDiagram、行号锚点或 alt 分支。
+- 远程调用未在"集成点"列出 URL（或显式 `${...}` / `<unresolved>` 标记）。
+- 任何 Spring 组件标题下缺 `**File**`。
+- 任何流程步骤引用的类名、方法名、字段名在 `components/*.json` 中找不到（必须删除该引用，不得杜撰）。
+- 出现 "通过 RestTemplate 调用外部服务" 这类无方法、无 URL、无行号的空表述。
 
 ### 6. 生成仓库总览
 

@@ -17,6 +17,8 @@ SPRING_STEREOTYPES = {
     "Repository": "repository",
     "Component": "component",
     "Configuration": "configuration",
+    "FeignClient": "remote_client_feign",
+    "HttpExchange": "remote_client_http_exchange",
 }
 
 HTTP_MAPPING = {
@@ -25,6 +27,63 @@ HTTP_MAPPING = {
     "PutMapping": "PUT",
     "DeleteMapping": "DELETE",
     "PatchMapping": "PATCH",
+}
+
+REMOTE_METHOD_ANNOTATIONS = {
+    "GetExchange": "GET",
+    "PostExchange": "POST",
+    "PutExchange": "PUT",
+    "DeleteExchange": "DELETE",
+    "PatchExchange": "PATCH",
+    "HttpExchange": "ANY",
+    "RequestLine": "ANY",
+}
+
+REMOTE_CLIENT_TYPES = {
+    "RestTemplate": "rest_template",
+    "WebClient": "web_client",
+    "OkHttpClient": "okhttp_client",
+    "HttpClient": "http_client",
+    "AsyncRestTemplate": "rest_template",
+    "RestClient": "rest_client",
+}
+
+REMOTE_CLIENT_METHODS = {
+    "rest_template": {
+        "getForObject": "GET",
+        "getForEntity": "GET",
+        "postForObject": "POST",
+        "postForEntity": "POST",
+        "postForLocation": "POST",
+        "put": "PUT",
+        "delete": "DELETE",
+        "patchForObject": "PATCH",
+        "exchange": "ANY",
+        "execute": "ANY",
+    },
+    "rest_client": {
+        "get": "GET",
+        "post": "POST",
+        "put": "PUT",
+        "delete": "DELETE",
+        "patch": "PATCH",
+        "method": "ANY",
+    },
+    "web_client": {
+        "get": "GET",
+        "post": "POST",
+        "put": "PUT",
+        "delete": "DELETE",
+        "patch": "PATCH",
+        "method": "ANY",
+    },
+    "okhttp_client": {
+        "newCall": "ANY",
+    },
+    "http_client": {
+        "send": "ANY",
+        "sendAsync": "ANY",
+    },
 }
 
 
@@ -82,6 +141,7 @@ def parse_java_file(repo_path: Path, file_path: Path, module: MavenModule) -> li
             component.methods = _methods(body, name, source)
             _mark_constructor_injection(component)
         component.entry_points = _entry_points(component, source)
+        component.remote_endpoints = _extract_remote_endpoints(component) + _remote_method_endpoints(component)
         components.append(component)
 
     return components
@@ -248,7 +308,16 @@ def _fields(body, source: str) -> list[JavaField]:
         if match:
             type_name = _compact_type(match.group(1).split()[-1])
             name = match.group(2)
-            fields.append(JavaField(name=name, type=type_name, annotations=annotations, injection=_field_injection(annotations)))
+            simple_type = type_name.split("<", 1)[0].replace("[]", "").strip()
+            fields.append(
+                JavaField(
+                    name=name,
+                    type=type_name,
+                    annotations=annotations,
+                    injection=_field_injection(annotations),
+                    remote_client_kind=REMOTE_CLIENT_TYPES.get(simple_type),
+                )
+            )
     return fields
 
 
@@ -293,13 +362,129 @@ def _calls(node, source: str) -> list[dict[str, Any]]:
     for child in _walk(node):
         if child.type == "method_invocation":
             text = _node_text(child, source) or ""
-            calls.append({"target": text.split("(", 1)[0].strip(), "kind": "method_call"})
+            call = {
+                "target": text.split("(", 1)[0].strip(),
+                "kind": "method_call",
+                "line": child.start_point[0] + 1,
+                "snippet": text if len(text) <= 400 else text[:400] + "...",
+            }
+            calls.append(call)
         elif child.type == "object_creation_expression":
             text = _node_text(child, source) or ""
             match = re.search(r"new\s+([A-Za-z_][A-Za-z0-9_$.]*)", text)
             if match:
-                calls.append({"target": match.group(1), "kind": "object_creation"})
+                calls.append(
+                    {
+                        "target": match.group(1),
+                        "kind": "object_creation",
+                        "line": child.start_point[0] + 1,
+                    }
+                )
     return calls
+
+
+def _extract_remote_endpoints(component: JavaComponent) -> list[dict[str, Any]]:
+    """
+    Detect remote HTTP calls made through RestTemplate/WebClient/HttpClient/etc.
+
+    Walks every method's `calls` list and recognises invocations targeting a
+    declared remote client field (e.g. `restTemplate.getForObject(...)`).
+    Extracts the first string literal or `${...}` placeholder argument as the
+    URL candidate. Appends entries to each method's `remote_endpoints` and
+    returns the aggregated list for the component.
+    """
+    remote_fields = {f.name: f.remote_client_kind for f in component.fields if f.remote_client_kind}
+    aggregated: list[dict[str, Any]] = []
+    for method in component.methods:
+        for call in method.calls:
+            target = str(call.get("target") or "")
+            if "." not in target:
+                continue
+            head, _, tail = target.partition(".")
+            client_kind = remote_fields.get(head)
+            if not client_kind:
+                continue
+            method_chain = tail.split(".")
+            method_table = REMOTE_CLIENT_METHODS.get(client_kind, {})
+            http_method: str | None = None
+            target_method: str | None = None
+            for piece in method_chain:
+                if piece in method_table:
+                    http_method = method_table[piece]
+                    target_method = piece
+                    break
+            if not target_method:
+                continue
+            snippet = str(call.get("snippet") or "")
+            url, literal_source = _first_url_literal(snippet)
+            endpoint = {
+                "kind": client_kind,
+                "http_method": http_method,
+                "target_method": target_method,
+                "client_field": head,
+                "url": url,
+                "literal_source": literal_source,
+                "line": call.get("line"),
+            }
+            method.remote_endpoints.append(endpoint)
+            aggregated.append({**endpoint, "via_method": method.name})
+    return aggregated
+
+
+def _first_url_literal(snippet: str) -> tuple[str | None, str | None]:
+    """Return (url, literal_source) where literal_source is 'string' or 'placeholder' or None."""
+    if not snippet:
+        return None, None
+    args_part = snippet.split("(", 1)[1] if "(" in snippet else snippet
+    string_match = re.search(r'"([^"]+)"', args_part)
+    if string_match:
+        return string_match.group(1), "string"
+    placeholder_match = re.search(r"\$\{([^}]+)\}", args_part)
+    if placeholder_match:
+        return "${" + placeholder_match.group(1) + "}", "placeholder"
+    return None, None
+
+
+def _remote_method_endpoints(component: JavaComponent) -> list[dict[str, Any]]:
+    """
+    For @FeignClient / @HttpExchange interfaces, every method with
+    @GetExchange / @PostExchange / @RequestMapping etc. is an outbound endpoint.
+    """
+    if component.stereotype not in {"remote_client_feign", "remote_client_http_exchange"}:
+        return []
+    class_base = _mapping_path(component.source_code, ["RequestMapping", "HttpExchange"])
+    endpoints: list[dict[str, Any]] = []
+    for method in component.methods:
+        http_method: str | None = None
+        used_annotation: str | None = None
+        for annotation in method.annotations:
+            if annotation in REMOTE_METHOD_ANNOTATIONS:
+                http_method = REMOTE_METHOD_ANNOTATIONS[annotation]
+                used_annotation = annotation
+                break
+            if annotation in HTTP_MAPPING:
+                http_method = HTTP_MAPPING[annotation]
+                used_annotation = annotation
+                break
+            if annotation == "RequestMapping":
+                http_method = "ANY"
+                used_annotation = annotation
+                break
+        if not used_annotation:
+            continue
+        method_path = _mapping_path_for_method(component.source_code, method.name, [used_annotation])
+        endpoint = {
+            "kind": component.stereotype,
+            "http_method": http_method,
+            "target_method": method.name,
+            "client_field": None,
+            "url": _join_paths(class_base, method_path),
+            "literal_source": "annotation",
+            "line": method.span.get("start_line") if method.span else None,
+        }
+        method.remote_endpoints.append(endpoint)
+        endpoints.append({**endpoint, "via_method": method.name})
+    return endpoints
 
 
 def _entry_points(component: JavaComponent, source: str) -> list[dict[str, Any]]:

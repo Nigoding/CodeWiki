@@ -7,60 +7,157 @@ import xml.etree.ElementTree as ET
 from javawiki_analyzer.models import MavenModule
 
 
+SUBPROJECT_SCAN_MAX_DEPTH = 3
+SUBPROJECT_SCAN_EXCLUDE_NAMES = {
+    ".git", ".idea", ".vscode", ".gradle", ".mvn",
+    "node_modules", "target", "build", "out", "dist",
+}
+
+
 def scan_maven_modules(repo_path: Path) -> tuple[dict, list[MavenModule], list[dict]]:
     diagnostics: list[dict] = []
-    root_pom = repo_path / "pom.xml"
-    if not root_pom.exists():
-        diagnostics.append({"level": "warning", "message": "No root pom.xml found; treating repository as a single Java source root."})
-        module = MavenModule("root", repo_path.name, ".", "pom.xml")
-        return {"type": "maven", "root_pom": None, "modules": [module.__dict__]}, [module], diagnostics
-
-    root_info = _parse_pom(root_pom)
     modules: list[MavenModule] = []
     seen_paths: set[str] = set()
+    seen_module_ids: set[str] = set()
 
-    if root_info.get("modules"):
-        artifact_id = root_info.get("artifact_id") or repo_path.name
-        if (repo_path / "src" / "main" / "java").exists():
-            modules.append(
-                MavenModule(
-                    module_id=_slug(artifact_id),
-                    artifact_id=artifact_id,
-                    path=".",
-                    pom_path="pom.xml",
-                    group_id=root_info.get("group_id"),
-                    version=root_info.get("version"),
-                )
-            )
-            seen_paths.add(".")
-        _collect_declared_modules(
+    root_pom = repo_path / "pom.xml"
+    if root_pom.exists():
+        _scan_subproject(
             repo_path=repo_path,
-            current_rel=Path("."),
-            inherited_group=root_info.get("group_id"),
-            inherited_version=root_info.get("version"),
+            root_rel=Path("."),
             modules=modules,
             seen_paths=seen_paths,
+            seen_module_ids=seen_module_ids,
             diagnostics=diagnostics,
         )
-    else:
-        artifact_id = root_info.get("artifact_id") or repo_path.name
+        return (
+            {"type": "maven", "root_pom": "pom.xml", "modules": [m.__dict__ for m in modules]},
+            modules,
+            diagnostics,
+        )
+
+    discovered = _discover_subproject_root_dirs(repo_path)
+    if not discovered:
+        diagnostics.append(
+            {
+                "level": "warning",
+                "code": "no_pom_found",
+                "message": "No pom.xml found in the repository or any scanned subdirectory; treating the repository as a single Java source root.",
+            }
+        )
+        synthetic = MavenModule("root", repo_path.name, ".", "pom.xml")
+        return (
+            {"type": "maven", "root_pom": None, "modules": [synthetic.__dict__]},
+            [synthetic],
+            diagnostics,
+        )
+
+    discovered_paths = [p.as_posix() for p in discovered]
+    diagnostics.append(
+        {
+            "level": "info",
+            "code": "no_root_pom_discovered_subprojects",
+            "discovered_subproject_roots": discovered_paths,
+            "message": (
+                f"Repository has no root pom.xml; auto-discovered {len(discovered)} subproject root(s) "
+                f"and treated each as an independent Maven project: {', '.join(discovered_paths)}."
+            ),
+        }
+    )
+
+    for root_rel in discovered:
+        _scan_subproject(
+            repo_path=repo_path,
+            root_rel=root_rel,
+            modules=modules,
+            seen_paths=seen_paths,
+            seen_module_ids=seen_module_ids,
+            diagnostics=diagnostics,
+        )
+
+    return (
+        {
+            "type": "maven",
+            "root_pom": None,
+            "discovered_subproject_roots": discovered_paths,
+            "modules": [m.__dict__ for m in modules],
+        },
+        modules,
+        diagnostics,
+    )
+
+
+def _discover_subproject_root_dirs(repo_path: Path) -> list[Path]:
+    """BFS subdirectories until a pom.xml is found; record that directory and stop descending."""
+    discovered: list[Path] = []
+
+    def walk(current: Path, depth: int) -> None:
+        if depth >= SUBPROJECT_SCAN_MAX_DEPTH:
+            return
+        try:
+            entries = sorted(current.iterdir())
+        except (PermissionError, OSError):
+            return
+        for entry in entries:
+            if not entry.is_dir():
+                continue
+            if entry.name in SUBPROJECT_SCAN_EXCLUDE_NAMES or entry.name.startswith("."):
+                continue
+            if (entry / "pom.xml").exists():
+                discovered.append(entry.relative_to(repo_path))
+            else:
+                walk(entry, depth + 1)
+
+    walk(repo_path, 0)
+    return discovered
+
+
+def _scan_subproject(
+    repo_path: Path,
+    root_rel: Path,
+    modules: list[MavenModule],
+    seen_paths: set[str],
+    seen_module_ids: set[str],
+    diagnostics: list[dict],
+) -> None:
+    """Treat repo_path/root_rel as a Maven root and walk its declared module tree."""
+    rel_posix = "." if root_rel == Path(".") else root_rel.as_posix()
+    pom_path_rel = "pom.xml" if rel_posix == "." else f"{rel_posix}/pom.xml"
+    pom_file = repo_path / root_rel / "pom.xml"
+    info = _parse_pom(pom_file) if pom_file.exists() else {}
+
+    artifact_id = info.get("artifact_id") or (
+        repo_path.name if rel_posix == "." else Path(rel_posix).name
+    )
+    has_src = (repo_path / root_rel / "src" / "main" / "java").exists()
+    declared = info.get("modules") or []
+
+    if rel_posix not in seen_paths and (has_src or not declared):
+        module_id = _make_unique_id(_slug(artifact_id), seen_module_ids)
+        seen_paths.add(rel_posix)
+        seen_module_ids.add(module_id)
         modules.append(
             MavenModule(
-                module_id=_slug(artifact_id),
+                module_id=module_id,
                 artifact_id=artifact_id,
-                path=".",
-                pom_path="pom.xml",
-                group_id=root_info.get("group_id"),
-                version=root_info.get("version"),
+                path=rel_posix,
+                pom_path=pom_path_rel,
+                group_id=info.get("group_id"),
+                version=info.get("version"),
             )
         )
 
-    build_system = {
-        "type": "maven",
-        "root_pom": "pom.xml",
-        "modules": [module.__dict__ for module in modules],
-    }
-    return build_system, modules, diagnostics
+    if declared:
+        _collect_declared_modules(
+            repo_path=repo_path,
+            current_rel=root_rel,
+            inherited_group=info.get("group_id"),
+            inherited_version=info.get("version"),
+            modules=modules,
+            seen_paths=seen_paths,
+            seen_module_ids=seen_module_ids,
+            diagnostics=diagnostics,
+        )
 
 
 def _collect_declared_modules(
@@ -70,6 +167,7 @@ def _collect_declared_modules(
     inherited_version: str | None,
     modules: list[MavenModule],
     seen_paths: set[str],
+    seen_module_ids: set[str],
     diagnostics: list[dict],
 ) -> None:
     current_pom = repo_path / current_rel / "pom.xml"
@@ -80,9 +178,10 @@ def _collect_declared_modules(
         pom_path = repo_path / module_rel / "pom.xml"
         info = _parse_pom(pom_path) if pom_path.exists() else {}
         artifact_id = info.get("artifact_id") or Path(declared).name
-        module_id = _unique_module_id(_slug(artifact_id), rel_posix, seen_paths)
         if rel_posix not in seen_paths:
+            module_id = _make_unique_id(_slug(artifact_id), seen_module_ids)
             seen_paths.add(rel_posix)
+            seen_module_ids.add(module_id)
             modules.append(
                 MavenModule(
                     module_id=module_id,
@@ -111,6 +210,7 @@ def _collect_declared_modules(
             inherited_version=info.get("version") or inherited_version,
             modules=modules,
             seen_paths=seen_paths,
+            seen_module_ids=seen_module_ids,
             diagnostics=diagnostics,
         )
 
@@ -148,11 +248,10 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "module"
 
 
-def _unique_module_id(base: str, rel_path: str, existing_paths: set[str]) -> str:
-    if rel_path not in existing_paths:
+def _make_unique_id(base: str, existing_ids: set[str]) -> str:
+    if base not in existing_ids:
         return base
-    return _slug(f"{rel_path}-{base}")
-
-
-def _posix(value) -> str:
-    return Path(value).as_posix()
+    index = 2
+    while f"{base}-{index}" in existing_ids:
+        index += 1
+    return f"{base}-{index}"

@@ -90,6 +90,13 @@ def run_analysis(
                 "total_modules": len(module_tree["modules"]),
                 "total_candidate_modules": len(candidate_modules["candidates"]),
                 "total_rest_endpoints": sum(len(component.entry_points) for component in components),
+                "total_remote_endpoints": sum(len(component.remote_endpoints) for component in components),
+                "total_remote_clients": sum(
+                    1
+                    for component in components
+                    if component.stereotype in {"remote_client_feign", "remote_client_http_exchange"}
+                    or any(f.remote_client_kind for f in component.fields)
+                ),
             },
             diagnostics=diagnostics,
         )

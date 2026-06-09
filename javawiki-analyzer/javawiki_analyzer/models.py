@@ -21,6 +21,7 @@ class JavaField:
     resolved_type: str | None = None
     annotations: list[str] = field(default_factory=list)
     injection: str | None = None
+    remote_client_kind: str | None = None
 
 
 @dataclass
@@ -31,6 +32,7 @@ class JavaMethod:
     annotations: list[str] = field(default_factory=list)
     calls: list[dict[str, Any]] = field(default_factory=list)
     span: dict[str, int] | None = None
+    remote_endpoints: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -55,6 +57,7 @@ class JavaComponent:
     source_code: str = ""
     maven_module: str | None = None
     diagnostics: list[dict[str, Any]] = field(default_factory=list)
+    remote_endpoints: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
