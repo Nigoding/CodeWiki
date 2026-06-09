@@ -1,0 +1,15 @@
+{
+  "name": "vuewiki-analyzer",
+  "version": "0.1.0",
+  "description": "Vue2 frontend analyzer that emits artifacts for business-flow documentation",
+  "bin": {
+    "vuewiki": "src/cli.js"
+  },
+  "scripts": {
+    "analyze": "node src/cli.js analyze"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}
