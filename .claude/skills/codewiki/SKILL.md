@@ -84,23 +84,7 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 
 `candidate_modules.json` 是模型聚合输入；`module_tree.json`、`processing_order.json` 和 `modules/*.json` 是文档生成输入。若执行了模型聚合，必须先更新这些最终文档输入，再开始写 Markdown。
 
-<<<<<<< HEAD
 如果用户同时提供 Vue2 前端分析产物，读取 [前端分析产物 Schema](references/frontend-artifact-schema.md) 与 [前后端对齐规则](references/frontend-backend-alignment.md)。前端产物用于补充页面入口、用户触发点、API 调用顺序和后端接口使用清单；与后端融合时以规范化后的 `(HTTP_method, path)` 作为 join key，按 4 个匹配等级（exact / placeholder_normalized / suffix_match / unmatched）分类。
-=======
-如果用户同时提供 Vue2 前端仓库或前端分析产物，读取 [前端分析产物 Schema](references/frontend-artifact-schema.md)。
-
-前端核心文件：
-
-- `analysis.json`
-- `module_tree.json`
-- `page_index.json`
-- `component_index.json`
-- `api_index.json`
-- `page_flows.json`
-- `backend_api_usage.json`
-
-前端产物用于补充页面入口、用户触发点、API 调用顺序和后端接口使用清单；与后端融合时以 `backend_api_usage.json` 的 `method + path` 匹配后端 `entry_points`。如果只有后端产物，仍可生成后端模块文档，但不能生成页面驱动的业务流程。
->>>>>>> 47c0b512219d86d7de6c9a25c828ce8b870dbc75
 
 ## 工作流
 
@@ -288,15 +272,9 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 1. 读取 `modules/<module_id>.json`。
 2. 按需读取组件详情 JSON，优先读取 Controller、Service、Configuration、领域模型、远程客户端、消息处理器、任务处理器和跨模块依赖来源；DTO/VO/枚举仅在决定流程时读取。
 3. 按 [模块文档模板](references/module-document-template.md) §"叶子模块" 的 10 段固定章节顺序输出。**章节顺序不得调整，不得跳过**；无内容的章节写"无（说明原因）"。
-<<<<<<< HEAD
 4. **第 4 节"数据流"**：
    - **若工作内存中本模块含 `frontend_driven_flows`（即存在前端 analysis）**：先按 [模块文档模板 §4.0](references/module-document-template.md) 写「前端业务流程」，每条 `matched_flow` 按 [流程章节模板 §2.1](references/flow-section-template.md) 「前端驱动变体」展开（含 User/Page/FrontApi 起手的 sequenceDiagram、步骤详解、`match_level` 与 `confidence` 措辞、alt 分支）。然后在 §4.X「后端入口」中处理剩余的**重要入口**——已在 §4.0 出现过的 endpoint 不重复展开，正文写"见 §4.0.X"交叉引用即可；**次要入口**按 [流程章节模板 §3](references/flow-section-template.md) 简写。若本模块涉及 `frontend_only_flows`，在 §4.0 末尾追加"前端独立流程"小节，明示"未在当前后端代码中找到对应 endpoint"。
    - **无前端 analysis 时**：跳过 §4.0，对本模块所有**重要入口**严格按 [流程章节模板 §2](references/flow-section-template.md) 展开（含 sequenceDiagram + 编号步骤 + 行号锚点 + alt 异常分支）；**次要入口**按 §3 简写。
-=======
-4. **第 4 节"数据流"**：对 §4.5 清单中本模块所有**重要入口**，严格按 [流程章节模板](references/flow-section-template.md) §2 展开（含 sequenceDiagram + 编号步骤 + 行号锚点 + alt 异常分支）；**次要入口**按 §3 简写。
-   - 如果存在匹配到本模块入口的前端页面流程，在对应入口流程前增加“前端触发来源”：页面标题、入口组件、触发点、前端 API 函数、调用顺序。
-   - 如果一个后端入口被多个页面调用，按页面分组列出，优先展示 `confidence` 高的流程。
->>>>>>> 47c0b512219d86d7de6c9a25c828ce8b870dbc75
 5. **第 5 节"集成点"**：使用 `modules/*.json.remote_endpoints` 直接填表；若该字段为空但 fallback 识别到远程调用，按 [远程调用识别](references/remote-call-recognition.md) 填表并标"来源 = fallback"。
 6. 每个 Spring 组件标题下**必须**紧跟 `**File**: <file_path>`。
 7. 所有源码引用必须含 `<file_path>:Lstart-Lend`；找不到行号时显式标注"行号未知"。前端步骤的行号若 `page_flows.json` 未提供，写"(行号未知，前端 analyzer 未提供 span)"。
@@ -330,11 +308,7 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 - `module_tree.json` 的顶层模块导航。
 - `dependencies.json` 的依赖方向。
 - 已完成模块文档的简短摘要。
-<<<<<<< HEAD
 - 若存在前端 analysis：§4.5.B 工作内存中的 `matched_flows / frontend_only_flows / backend_only_endpoints` 全集。
-=======
-- 如果提供了前端产物，使用前端 `analysis.json`、`page_index.json`、`page_flows.json` 和 `backend_api_usage.json` 补充页面业务入口和前后端调用链。
->>>>>>> 47c0b512219d86d7de6c9a25c828ce8b870dbc75
 
 总览结构参考 [仓库总览模板](references/overview-template.md)。
 
@@ -367,12 +341,7 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 - 模型聚合无法确定业务边界：保留更高层模块，记录原因，不强行细拆。
 - 组件源码过大：只读取当前模块所需的方法、注解、字段和依赖记录。
 - 组件源码或解析数据缺失：在文档中标注限制，避免推测性说明。
-<<<<<<< HEAD
 - `remote_url_unresolved` 数量较多（占 `total_remote_endpoints` ≥ 30%）：在每个受影响模块文档"维护注意事项"中明示，并提示用户检查 `application.yml` 中的占位符配置或重跑 analyzer。
 - 前端 analysis 缺失或解析失败（`page_flows.json` 不存在 / `summary.total_page_flows == 0` / 关键 diagnostic）：自动降级为纯后端流程，不再生成 §4.0「前端业务流程」与 §5.X「前后端对齐总览」，并在最终报告中说明降级原因。
 - 前端 endpoint 与后端 0 命中（`matched_flows` 为空但 `frontend_only_flows` 非空）：保留 frontend_only_flows 章节并在总览警示"当前后端代码与前端 API 集合不在同一服务边界，疑似只是前端 + 网关 / 中台调用"。
 - 前端 `confidence == low` 的 step 比例超过 50%：在总览"前后端对齐总览"小节明示对齐结果可信度受限，建议用户查看前端 analyzer 的 `frontend_runtime_path_unresolved` 诊断。
-=======
-- 提供前端仓库但 `vuewiki-analyzer` 不可用：继续生成后端文档前先说明无法生成页面驱动业务流程。
-- 前端接口无法匹配后端入口：保留在“未匹配前端接口清单”，不要把它强行归入后端模块。
->>>>>>> 47c0b512219d86d7de6c9a25c828ce8b870dbc75
