@@ -26,7 +26,7 @@ description: >
 - **前端分析产物**（可选）：若用户同时提供 Vue2 前端代码或 `vuewiki-analyzer` 产生的 `.frontend-analysis/`（含 `page_flows.json`、`backend_api_usage.json`、`api_index.json`），文档将以前端业务流程为主线编排。前端产物缺失时按纯后端流程生成，不阻塞主流程。
 - 前端网关前缀（可选）：若前端通过网关（如 `/api/v1`、`/gateway`）转发到后端，提示用户在 prompt 中显式声明 `frontend_base_path`，对齐时会先剥离该前缀（见 [前后端对齐规则](references/frontend-backend-alignment.md) §2.2）。
 
-如果分析产物不存在，先运行 analyzer：
+如果后端分析产物不存在，先运行后端 analyzer：
 
 ```bash
 javawiki analyze <repo-path-or-git-url> -o <analysis-dir> --submodules auto
