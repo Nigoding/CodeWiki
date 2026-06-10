@@ -66,7 +66,19 @@ graph TB
 
 ## 4. 数据流（Data Flow）
 
-对每个被标记为"重要入口"的 endpoint，严格按 [flow-section-template.md](flow-section-template.md) 展开（含 sequenceDiagram、编号步骤、行号锚点、alt 异常分支）。
+> **当前后端 + 前端 analysis 同时存在时**：先写 §4.0，再写 §4.X。`matched_flows` 已经把前端入口对齐到本模块的后端 endpoint —— 这些 endpoint 在 §4.X 不重复展开，正文交叉引用 `见 §4.0.X`。`backend_only_endpoints.important` 仍按 §4.X 完整展开。
+
+### 4.0 前端业务流程（Frontend-Driven Flows，仅当存在前端 analysis 时输出）
+
+数据源：[frontend-backend-alignment.md](frontend-backend-alignment.md) §4 产出的 `matched_flows`（按 frontend module → page → flow_id 排序），仅取本后端模块涉及的 flow。
+
+对每条 `matched_flow`，按 [flow-section-template.md](flow-section-template.md) §2.1「前端驱动变体」完整展开（含 User/Page/FrontApi 起手的 sequenceDiagram + 步骤详解 + alt 分支 + 行号锚点）。
+
+若该模块还存在 `frontend_only_flows`，在本节末尾追加小节"前端独立流程"，列出每条未对齐的前端流程，明确标"未在当前后端代码中找到对应 endpoint，可能由其他后端服务或中台实现"。
+
+### 4.X 后端入口
+
+对每个被标记为"重要入口"的 endpoint，严格按 [flow-section-template.md](flow-section-template.md) §2 展开（含 sequenceDiagram、编号步骤、行号锚点、alt 异常分支）。**已在 §4.0 出现过的 endpoint 不重复展开**，正文一句话交叉引用即可。
 
 对非重要入口，按 flow-section-template §3 的简写规则列调用链 bullet。
 

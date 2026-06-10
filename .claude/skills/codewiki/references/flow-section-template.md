@@ -70,6 +70,73 @@ sequenceDiagram
 - **降级链路**：若有 `@HystrixCommand` / `@CircuitBreaker` / try-catch 兜底逻辑，给出落点。
 ```
 
+## 2.1 前端驱动变体（当存在 vuewiki 分析产物时）
+
+如果当前 flow 来自前端 `page_flows.json` 并经 [frontend-backend-alignment.md](frontend-backend-alignment.md) 对齐到本模块的某个后端 endpoint（`matched_flows` 集合），章节标题改用前端业务名称，并在时序图最左侧补 `User` / `Page` participant。骨架如下：
+
+```markdown
+### <page_title> · <trigger 中文释义> (`<flow_id>`)
+
+- **业务标识**：`bizId=<biz_id>`
+- **页面**：`<page_title>`
+- **触发点**：<lifecycle / event 中文释义>（前端 `<component_file>`）
+- **前端 API**：`<function_name>()` 定义于 `<defined_in>`
+- **对齐方式**：<exact / placeholder_normalized / suffix_match>（confidence: <high/medium/low>）
+- **后端入口**：`<qualified_name>#<method>()` — `<file_path>:Lstart-Lend`
+
+#### 时序图
+
+​```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant Page as <Page.vue 简称>
+    participant FrontApi as <api.js 简称>
+    participant Controller as <ControllerSimpleName>
+    participant Service as <ServiceSimpleName>
+    participant RemoteClient as <RemoteClientSimpleName>
+    participant External as <外部中台主机或服务名>
+
+    User->>Page: <触发动作释义>
+    Page->>FrontApi: <function_name>(<关键参数>)
+    FrontApi->>Controller: <HTTP方法> <路径>\n请求体: <主要字段>
+    Controller->>Service: <方法名>(<关键参数>)
+    Service->>RemoteClient: <方法名>(...)
+    RemoteClient->>External: <HTTP方法> <URL>
+    alt 成功
+        External-->>RemoteClient: 200 <响应摘要>
+        RemoteClient-->>Service: <返回类型>
+        Service-->>Controller: <返回类型>
+        Controller-->>FrontApi: 200 <ResultVo>
+        FrontApi-->>Page: <前端处理: setData / 跳转>
+        Page-->>User: <UI 反馈>
+    else 远程失败 / 业务拒绝
+        External-->>RemoteClient: <错误码>
+        RemoteClient-->>Service: 抛 <ExceptionClass>
+        Service-->>Controller: 抛 <ExceptionClass>
+        Controller-->>FrontApi: <ErrorResponse>
+        FrontApi-->>Page: <前端处理: toast / 留在原页>
+        Page-->>User: <错误提示>
+    end
+​```
+
+#### 步骤详解
+
+1. **<触发动作>** — 前端 `<component_file>:Lxx`
+   - <事件 / 生命周期来源描述>
+2. **`<function_name>()`** — 前端 `<defined_in>:Lxx`
+   - 构造请求体 `<主要字段>`，调用 `request({ url: '<路径>', method: '<HTTP方法>' })`。
+3. **`<qualified_name>#<method>()`** — `<file_path>:Lstart-Lend`
+   - 后续步骤同 §2 重要入口的"步骤详解"段，按 `methods[].calls[].resolved_component` 递归展开。
+```
+
+**前端步骤的写法约束**：
+
+- 前端文件行号若 `page_flows.json` 未给出，写 `(行号未知，前端 analyzer 未提供 span)`。
+- `function_name`、`method`、`path` 必须从 `page_flows.json.steps[]` 与 `api_index.json.api_calls[]` 取，不杜撰。
+- 若 `match_level == suffix_match`，在"对齐方式"行后补一行：`> 注意：后端 path 是前端 path 的尾段匹配，疑似存在网关前缀 \`<前缀>\`，请确认。`
+- `confidence == medium` 的触发点（template 事件、watch）在"步骤详解"第 1 步加 "（基于 template 静态识别）"；`confidence == low` 的 step 整条 flow 不展开（仅在维护注意事项列出）。
+
 ## 3. 次要入口简写
 
 对未被标记为重要的入口，使用单段 bullet 列表：
@@ -159,3 +226,7 @@ sequenceDiagram
 | 远程 HTTP 方法 | `remote_endpoints[i].http_method` |
 | 远程客户端类名 | `remote_endpoints[i].client_field` 解析为字段类型，或 `stereotype == remote_client_feign` 的组件 |
 | 异常 | 源码 `throw new X(...)` 或方法签名 `throws X`；若 `methods[i].calls` 中没暴露，需读 `source_code` 字段定位 |
+| 前端触发点 / 页面 / bizId | `page_flows.json.flows[i].{trigger, page_title, biz_id, component_file}` |
+| 前端 API 函数定义 | `api_index.json.api_calls[<api_call_id>].{function_name, defined_in, method, path, confidence}` |
+| 前后端对齐方式 | 工作内存 `matched_flows[i].steps[j].match_level` + `match_reason`（见 [frontend-backend-alignment.md](frontend-backend-alignment.md) §3） |
+

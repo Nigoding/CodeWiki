@@ -47,13 +47,23 @@ graph TB
 
 ## 5. 关键流程
 
-挑选 2-4 个最具代表性的端到端业务流（优先涵盖：登录认证、核心写入流程、关键查询流程、跨模块远程调用流程）。每个流程：
+挑选 2-4 个最具代表性的端到端业务流（优先涵盖：登录认证、核心写入流程、关键查询流程、跨模块远程调用流程）。
 
-- 一句话说明业务目的。
-- 一张 sequenceDiagram，参与者使用模块名或核心 Controller/Service 名，至少含一个外部系统。
-- 链接到该流程的详细描述（在对应模块文档的"数据流"小节）。
+**当存在前端 analysis 时**：优先从 [frontend-backend-alignment.md](frontend-backend-alignment.md) 产出的 `matched_flows` 中按 `overall_confidence == high` 挑选，每条形成端到端业务路径，sequenceDiagram 参与者为 `User → Page.vue → frontend API → Controller → Service → RemoteClient → External`。
+
+每个流程：
+
+- 一句话说明业务目的（含前端 `page_title` / `bizId`，若存在前端 analysis）。
+- 一张 sequenceDiagram，参与者使用模块名或核心 Page / Controller / Service 名，至少含一个外部系统。
+- 链接到该流程的详细描述（在对应模块文档的 §4.0「前端业务流程」或 §4「数据流」小节）。
 
 不要重复模块文档中的完整步骤；overview 只画"全景路径"。
+
+## 5.X 前后端对齐总览（仅当存在前端 analysis 时输出）
+
+- **对齐统计**：表格列 `matched_flows` 总数 / `frontend_only_flows` 总数 / `backend_only_endpoints` 总数。
+- **对齐方式分布**：exact / placeholder_normalized / suffix_match 三类各占比；若 suffix_match 数量较多，提示用户确认网关前缀。
+- **典型未对齐流程**：从 `frontend_only_flows` 与 `backend_only_endpoints.important` 各列 3-5 条最有代表性的（页面名 / endpoint 路径 / 推测原因），让读者快速看到"前后端不一致"区域。
 
 ## 6. 入口与外部依赖
 

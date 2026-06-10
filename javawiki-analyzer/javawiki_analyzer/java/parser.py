@@ -454,6 +454,11 @@ def _remote_method_endpoints(component: JavaComponent) -> list[dict[str, Any]]:
         return []
     class_base = _mapping_path(component.source_code, ["RequestMapping", "HttpExchange"])
     endpoints: list[dict[str, Any]] = []
+    sorted_methods = sorted(
+        [m for m in component.methods if m.span],
+        key=lambda m: m.span["start_line"],
+    )
+    span_index = {id(m): i for i, m in enumerate(sorted_methods)}
     for method in component.methods:
         http_method: str | None = None
         used_annotation: str | None = None
@@ -472,7 +477,9 @@ def _remote_method_endpoints(component: JavaComponent) -> list[dict[str, Any]]:
                 break
         if not used_annotation:
             continue
-        method_path = _mapping_path_for_method(component.source_code, method.name, [used_annotation])
+        method_path = _mapping_path_for_method(
+            component, method, sorted_methods, span_index, [used_annotation]
+        )
         endpoint = {
             "kind": component.stereotype,
             "http_method": http_method,
@@ -493,8 +500,19 @@ def _entry_points(component: JavaComponent, source: str) -> list[dict[str, Any]]
 
     class_base = _mapping_path(component.source_code, ["RequestMapping"])
     entry_points = []
+    sorted_methods = sorted(
+        [m for m in component.methods if m.span],
+        key=lambda m: m.span["start_line"],
+    )
+    span_index = {id(m): i for i, m in enumerate(sorted_methods)}
     for method in component.methods:
-        mapping = _method_mapping(method.annotations, component.source_code, method.name)
+        mapping = _method_mapping(
+            method.annotations,
+            component,
+            method,
+            sorted_methods,
+            span_index,
+        )
         if mapping:
             http_method, method_path = mapping
             entry_points.append(
@@ -527,12 +545,22 @@ def _signature_params(signature: str) -> list[str]:
     return [part.strip() for part in inner.split(",") if part.strip()]
 
 
-def _method_mapping(annotations: list[str], class_source: str, method_name: str) -> tuple[str, str] | None:
+def _method_mapping(
+    annotations: list[str],
+    component: JavaComponent,
+    method: JavaMethod,
+    sorted_methods: list[JavaMethod],
+    span_index: dict[int, int],
+) -> tuple[str, str] | None:
     for annotation in annotations:
         if annotation in HTTP_MAPPING:
-            return HTTP_MAPPING[annotation], _mapping_path_for_method(class_source, method_name, [annotation])
+            return HTTP_MAPPING[annotation], _mapping_path_for_method(
+                component, method, sorted_methods, span_index, [annotation]
+            )
         if annotation == "RequestMapping":
-            return "ANY", _mapping_path_for_method(class_source, method_name, [annotation])
+            return "ANY", _mapping_path_for_method(
+                component, method, sorted_methods, span_index, ["RequestMapping"]
+            )
     return None
 
 
@@ -544,10 +572,24 @@ def _mapping_path(source: str, annotation_names: list[str]) -> str:
     return ""
 
 
-def _mapping_path_for_method(source: str, method_name: str, annotation_names: list[str]) -> str:
-    idx = source.find(method_name)
-    prefix = source[max(0, idx - 500) : idx] if idx >= 0 else source
-    return _mapping_path(prefix, annotation_names)
+def _mapping_path_for_method(
+    component: JavaComponent,
+    method: JavaMethod,
+    sorted_methods: list[JavaMethod],
+    span_index: dict[int, int],
+    annotation_names: list[str],
+) -> str:
+    if not method.span or not component.span:
+        return ""
+    class_lines = component.source_code.splitlines()
+    class_start_line = component.span["start_line"]
+    method_start_rel = method.span["start_line"] - class_start_line
+    method_end_rel = method.span["end_line"] - class_start_line
+    if method_start_rel < 0 or method_start_rel >= len(class_lines):
+        return ""
+    method_end_rel = min(method_end_rel, len(class_lines) - 1)
+    window = "\n".join(class_lines[method_start_rel : method_end_rel + 1])
+    return _mapping_path(window, annotation_names)
 
 
 def _extract_path_arg(args: str) -> str:
