@@ -1,6 +1,8 @@
-# 模块文档模板
+# 模块业务文档模板
 
-模块文档面向 Java 维护者，目标是让读者能**沿着真实代码读懂业务流程**——既能看到架构骨架，也能从入口跟踪到每个调用点的行号。只写 artifacts 或源码片段能够支持的内容。
+模块文档面向刚接触该业务模块的开发人员，目标是帮助读者快速理解：模块负责什么、业务场景如何触发、流程如何依赖内部模块和外部业务主机、失败时对业务结果有什么影响。
+
+生成时必须基于 analyzer artifacts 或源码证据，但正文默认不输出源码行号、源码片段或完整证据链。正文只保留轻量实现引用，如 `XxxController#method`、`XxxService#method`、`XxxClient#method`。证据不足的内容放入“待确认点”，不得写成确定事实。
 
 ## 通用规则
 
@@ -9,103 +11,225 @@
 - 一级标题使用模块 `name`。
 - 链接使用相对当前 Markdown 文件的路径。
 - 这是业务说明文档，不是 API 文档。不要输出交易码列表、完整接口表格、请求/响应参数清单或接口手册式内容。
-- 文档篇幅优先给业务概述、业务流程和模块依赖；代码结构、组件列表和配置只写支撑理解所需的内容。
-- 提到 Java 类型时使用 `qualified_name`；类标题下**必须**紧跟 `**File**: <file_path>`。
-- 流程关键步骤**必须**能在源码中找到对应行号；引用格式：`<file_path>:Lstart-Lend`。
-- 提到接口、依赖、Maven 模块或组件时，必须能在 `modules/*.json`、`components/*.json`、`dependencies.json` 或 `analysis.json.build_system` 中找到依据。
-- 远程调用必须有明确 URL（或 `${...}` 占位符 / `<unresolved>` 标记），见 [remote-call-recognition.md](remote-call-recognition.md)。
-- 不杜撰：源码或 artifacts 中找不到的字段、方法、URL、异常类、配置项一律不写。
+- 文档篇幅优先给模块定位、业务上下文、核心业务场景和场景流程；组件清单、源码行号和代码细节默认不输出。
+- 不单独生成“业务规则”章节。只有直接改变场景走向的判断、分支、拒绝、降级或兜底逻辑，才写入对应场景的“分支与异常路径”。
+- 本类系统可能不维护本地数据层。将“关键数据与状态”和“外部系统交互”合并为“业务数据来源与外部依赖”，重点说明 RPC/HTTP/中台服务提供了什么业务数据，以及本模块如何聚合、转换、筛选或判断。
+- 提到接口、依赖、Maven 模块、组件、前端页面或外部系统时，必须能在 `modules/*.json`、`components/*.json`、`dependencies.json`、前端 artifacts 或源码中找到依据。
+- 远程调用必须有明确 URL、RPC/Feign 客户端、`${...}` 占位符或 `<unresolved>` 标记，见 [remote-call-recognition.md](remote-call-recognition.md)。
+- 不杜撰：artifacts 或源码中找不到的字段、方法、URL、异常类、配置项、业务状态、外部系统或流程分支一律不写。
 
 ## 叶子模块
 
-固定章节顺序（不得调整、不得跳过；某些章节确实无内容时写"无（说明原因）"）：
+固定章节顺序（不得调整、不得跳过；某些章节确实无内容时写“无（说明原因）”）：
 
 ```markdown
 # 模块名称
 
-## 1. 业务概述（Business Overview）
+## 1. 模块定位
 
-说明本模块在 Java/Maven/Spring 系统中的职责、边界和不负责的内容。1-3 段，每段 ≤ 4 行。
+说明本模块在当前微服务或业务能力中的位置。
 
-## 2. 业务流程（Business Flows）
+- 所属业务能力：
+- 本模块负责：
+- 本模块不负责：
+- 上游触发方：
+- 下游依赖方：
+- 主要业务价值：
 
-本节是模块文档重点。优先写前端驱动流程和重要后端入口，按 [flow-section-template.md](flow-section-template.md) 展开；接口路径只作为流程证据出现，不输出完整 API 清单。
+用 1-3 段业务语言说明，不展开代码实现细节。
 
-当存在前端 analysis 时，先写“前端业务流程”，再写未被前端覆盖的重要后端入口。已在前端流程中出现过的后端 endpoint 不重复展开，正文交叉引用即可。
+## 2. 业务上下文
 
-业务流程必须配 Mermaid 图。端到端调用链使用 `sequenceDiagram`；纯业务状态流、审批流、阶段流可使用 `flowchart TD`。
-
-## 3. 业务规则（Business Rules）
-
-仅当源码、配置或前端流程中能明确证明规则存在且有业务价值时输出。没有明确业务规则时写“无明确业务规则证据”，不要把参数校验、DTO 字段或枚举清单包装成业务规则。
-
-## 4. 模块结构（Module Structure）
+说明本模块和前端页面、其他内部模块、外部业务主机之间的关系。
 
 ​```mermaid
-graph TB
-    subgraph Presentation
-        Controller1["XxxController"]
-    end
-    subgraph Business
-        Service1["XxxService"]
-    end
-    subgraph External
-        RemoteClient1["XxxFeignClient"] --> H1["api.partner.com"]
-    end
-    Controller1 --> Service1
-    Service1 --> RemoteClient1
+graph LR
+    Upstream["前端页面 / 上游系统"]
+    Current["当前模块"]
+    Internal["内部模块"]
+    HostA["业务主机 A"]
+    HostB["业务主机 B"]
+
+    Upstream --> Current
+    Current --> Internal
+    Current --> HostA
+    Current --> HostB
 ​```
 
-- 节点取自本模块组件 `simple_name`；外部节点取自 `modules/*.json.external_systems`。
-- 边的依据是 `dependencies.json` 中本模块组件的 `component_dependencies`。
+说明：
 
-## 5. 核心组件（Core Components）
+- 前端或上游如何触发本模块。
+- 本模块依赖哪些业务主机获取或提交数据。
+- 本模块是否承担聚合、转换、筛选、判断或编排职责。
+- 哪些数据或状态并不由本模块维护。
 
-按 stereotype 分小节：Controllers / Services / Remote Clients / Configurations / Domain Models / Schedulers / Listeners。
+## 3. 核心业务场景
 
-每个组件用四级标题，紧跟 `**File**`：
+列出本模块承接的 2-5 个核心场景。只列核心场景，不列完整接口清单。
 
-### XxxController
+| 场景 | 业务目的 | 触发入口 | 主要依赖 | 输出结果 |
+|------|----------|----------|----------|----------|
+| 场景 A | 说明要解决的业务问题 | 页面动作 / 接口 / 消息 / 定时任务 | 业务主机 / 内部模块 | 返回结果 / 状态变化 / 错误提示 |
 
-**File**: `<file_path>`
+## 4. 场景流程详解
 
-- **职责**：1-2 句。
-- **业务入口**（若是 Controller / Feign）：只列与核心业务流程相关的入口，说明其业务作用；不要输出完整接口表。
-- **Key Operations**（若是 Service）：
-  - `doSomething()` — `<file>:Lxx-Lyy`：一句话作用。
-- **Key Fields**：列重要字段（含远程客户端字段、`@Value` 配置字段）；DTO 类型字段不必逐个列出。
-- **继承/实现**：`extends X` / `implements Y`。
+本节是模块文档重点。每个场景按下面结构展开。
 
-## 6. 模块依赖（Module Dependencies）
+### 场景：xxx
 
-按 [dependency-analysis-rules.md](dependency-analysis-rules.md) 输出。依赖描述必须尽量细化到“模块名 → 服务类 → 具体方法 → 调用目的”，并配 Mermaid `graph TB` 或 `graph LR`。不要只根据 `pom.xml` 推断依赖关系。
+#### 业务目的
 
-## 7. 集成点（Integration Points）
+说明这个场景解决什么业务问题，用户或上游系统为什么需要它。
 
-| 外部系统 | 调用类 | 调用方法 | 用途 | 来源 |
-|----------|--------|----------|------|------|
-| ${inventory.platform.url} | `OrderService` | `freezeStock()` | 下单前冻结库存 | analyzer |
+#### 触发条件
 
-- 数据来自 `modules/*.json.remote_endpoints`；若该字段为空但源码可见远程调用，按 [remote-call-recognition.md](remote-call-recognition.md) fallback 填写并标"来源 = fallback"。
-- URL 为占位符时附一行"配置项：`<key>` 见 `application.yml`/`bootstrap.yml`"。
-- 无远程调用时写"本模块无对外远程调用"。
+说明流程从哪里开始：
 
-## 8. 配置与错误处理（Configuration & Error Handling）
+- 前端页面：
+- 用户动作：
+- 后端入口：
+- 系统事件 / 消息 / 定时任务：
 
-- 列出会影响业务行为的配置项，例如开关、阈值、超时、重试、降级。
-- 列出核心错误处理路径、错误码含义和业务拒绝场景。
-- 不输出纯技术参数清单。
+#### 主流程
 
-## 9. 维护注意事项（Maintenance Notes）
+用业务语言描述流程，不输出源码证据、源码行号或源码片段。
 
-- 事务、扩展点、并发风险。
-- 远程调用注意：超时、重试、降级链路。
-- analyzer 覆盖不足的地方（如使用 fallback 识别、`<unresolved>` URL 数量、`source_code` 截断）。
-- Schema 版本警告（若读到 `schema_version < 1.1` 必须在此说明）。
+1. 前端或上游发起业务请求。
+2. 当前模块识别业务意图并完成基础处理。
+3. 当前模块调用相关业务主机或内部模块获取 / 提交数据。
+4. 当前模块对返回结果进行聚合、转换、筛选或判断。
+5. 当前模块返回业务结果给前端或上游。
 
-## 10. 相关文档（Related Documentation）
+#### 流程图
 
-列出本模块依赖或被依赖的兄弟模块文档链接（相对路径）。
+​```mermaid
+sequenceDiagram
+    autonumber
+    participant User as 用户 / 上游系统
+    participant Page as 前端页面
+    participant Module as 当前模块
+    participant HostA as 业务主机 A
+    participant HostB as 业务主机 B
+
+    User->>Page: 触发业务动作
+    Page->>Module: 发起业务请求
+    Module->>HostA: 获取 / 提交业务数据
+    HostA-->>Module: 返回业务结果
+    Module->>HostB: 补充查询 / 校验 / 提交
+    HostB-->>Module: 返回处理结果
+    Module-->>Page: 返回聚合后的业务结果
+    Page-->>User: 展示结果或提示
+​```
+
+#### 分支与异常路径
+
+只写源码、配置、前端流程或 analyzer artifacts 中能确认的分支。不要单独抽象成业务规则清单；没有明确业务含义的判断放入“待确认点”。
+
+- 成功路径：
+- 业务拒绝：
+- 外部业务主机失败：
+- 空结果：
+- 超时 / 降级：
+- 前端错误提示：
+
+#### 输出结果
+
+说明该场景可能产生的业务结果：
+
+- 成功：
+- 失败：
+- 拒绝：
+- 空结果：
+- 待确认：
+
+#### 相关实现
+
+只保留轻量实现引用，不输出源码行号、源码片段或完整调用链证据。
+
+- 入口：`XxxController#method`
+- 编排服务：`XxxService#method`
+- 外部依赖：`XxxClient#method`
+- 前端 API：`xxxApi()`
+
+## 5. 业务数据来源与外部依赖
+
+本节合并“关键数据与状态”和“外部系统交互”，适用于自身不维护数据层、主要通过 RPC / HTTP / 中台服务获取或提交业务数据的系统。
+
+| 外部系统 / 业务主机 | 调用方式 | 获取或提交的数据 | 用于哪个场景 | 本模块处理 | 失败影响 |
+|--------------------|----------|------------------|--------------|------------|----------|
+| 业务主机 A | RPC / HTTP | 数据含义 | 场景 A | 聚合 / 转换 / 判断 | 返回失败 / 降级 / 阻断 |
+
+说明重点：
+
+- 外部依赖提供什么业务数据。
+- 本模块是否对数据做聚合、转换、筛选、判断。
+- 外部调用失败、超时、空结果时如何影响业务流程。
+- 是否存在降级、兜底、默认值或错误提示。
+
+不要输出完整 API 表格、请求参数表或交易码列表。
+
+## 6. 模块协作与依赖
+
+说明本模块和其他内部模块的协作关系。
+
+​```mermaid
+graph LR
+    Current["当前模块"]
+    ModuleA["内部模块 A"]
+    ModuleB["内部模块 B"]
+    HostA["业务主机 A"]
+
+    Current -->|XxxService#method，完成业务校验| ModuleA
+    Current -->|XxxService#method，获取补充信息| ModuleB
+    Current -->|RPC / HTTP，获取业务数据| HostA
+​```
+
+| 依赖对象 | 服务类 / 方法 | 调用目的 | 影响场景 |
+|----------|---------------|----------|----------|
+| 内部模块 A | `XxxService#method` | 业务含义 | 场景 A |
+| 业务主机 A | `XxxClient#method` | 业务含义 | 场景 B |
+
+如果没有明显内部模块依赖，写：
+
+> 本模块主要依赖外部业务主机，未发现显著内部模块调用。
+
+## 7. 配置、开关与错误处理
+
+只写会影响业务行为的配置和错误处理。不要输出独立业务规则总结。
+
+| 类型 | 名称 | 影响范围 | 业务含义 |
+|------|------|----------|----------|
+| 开关 | xxx.enabled | 场景 A | 控制是否启用某业务路径 |
+| 超时 | xxx.timeout | 外部调用 | 影响等待时间和失败返回 |
+| 降级 | xxx.fallback | 场景 B | 外部失败时使用默认处理 |
+
+说明：
+
+- 业务开关。
+- 阈值配置。
+- 超时配置。
+- 重试 / 降级。
+- 异常映射。
+- 错误提示。
+
+如果已在第 5 节详细说明，这里只做汇总，不重复展开。
+
+## 8. 待确认点
+
+列出证据不足或需要人工确认的内容。
+
+| 待确认项 | 影响范围 | 原因 |
+|----------|----------|------|
+| 前端流程未匹配到后端入口 | 场景 A | 当前前端 API 未在后端 entry_points 中命中 |
+| 外部接口返回码含义不明确 | 场景 B | 源码中只透传返回结果，未见明确业务解释 |
+
+包括：
+
+- 前后端未对齐流程。
+- 低置信度前端流程。
+- 源码缺失或 submodule 缺失。
+- analyzer 未识别出的动态路径。
+- 外部业务主机语义无法从源码确认。
 ```
 
 ## 父模块
@@ -117,51 +241,37 @@ graph TB
 
 ## 1. 概述
 
-说明该业务域或技术域的整体职责。
+说明该业务域或模块组的整体职责和边界。
 
 ## 2. 子模块导航
 
 | 模块 | 职责 | 文档 |
 |------|------|------|
-| XxxApi | 对外接口层 | [link](api.md) |
+| XxxApi | 对外承接入口 | [link](api.md) |
 
-## 3. 架构关系
+## 3. 业务上下文
 
-​```mermaid
-graph TB
-    subgraph 本模块
-        sub1["api"]
-        sub2["application"]
-    end
-    External["partner.gateway"]
-    sub1 --> sub2 --> External
-​```
+用一张 Mermaid 图概括子模块、上游入口和外部业务主机之间的关系。只画 artifacts 或源码能够证明的节点和边。
 
-子模块作为节点；外部系统取自所有叶子子模块 `external_systems` 的并集。
+## 4. 跨模块业务场景
 
-## 4. 跨模块业务流（Cross-Module Flow）
+挑选至少一个真实可追溯的跨子模块场景，按“业务目的 / 触发条件 / 主流程 / 分支与异常路径 / 相关实现”展开。正文不输出源码行号或证据表。
 
-对**至少一个**跨越多个子模块的端到端业务流程，按 [flow-section-template.md](flow-section-template.md) 的重要入口骨架展开（含 sequenceDiagram + 编号步骤 + 行号 + alt）。不要写"API → Application → Domain → Persistence"这种空泛分层描述。
+## 5. 协作边界
 
-## 5. 依赖边界
-
-总结允许的依赖方向（如 api → application → domain）和实际观察到的依赖方向；标注违反方向的边（如有）。
-
-## 6. 横切关注点
-
-公共模型、配置、基础设施、远程调用统一约定、消息、缓存、安全或任务约定。
+总结子模块之间允许的协作方向和实际观察到的调用方向；标注需要人工确认的边界。
 ```
 
-父模块必须保持概述级别，但**跨模块业务流必须真实可追溯**——这是父模块文档对读者最大的价值。
+父模块必须保持概述级别，不复制子模块组件细节。
 
 ## Java/Spring 关注重点
 
 按优先级：
 
-1. 业务流程：前端页面触发、Controller 承接、Service 编排、远程调用和返回处理。
-2. 业务规则：有源码或配置证据的状态流转、阈值、开关、准入/拒绝条件。
-3. 模块依赖：实际服务类和方法调用，含跨模块调用。
-4. 远程客户端：`@FeignClient`、`@HttpExchange`、`RestTemplate`、`WebClient` 等及目标系统。
+1. 业务场景：前端页面触发、Controller 承接、Service 编排、外部业务主机调用和返回处理。
+2. 外部数据来源：RPC/HTTP/Feign/RestTemplate/WebClient 调用提供的业务数据及其用途。
+3. 场景分支：有源码、配置或前端流程证据的拒绝、降级、兜底、空结果和错误提示。
+4. 模块依赖：实际服务类和方法调用，含跨模块调用。
 5. MQ producer/consumer、`@Scheduled` 任务、`@EventListener`。
 6. 配置和错误处理对业务行为的影响。
 
@@ -169,9 +279,8 @@ graph TB
 
 仅在图能提高理解时使用。强制场景：
 
-- **业务流程**：每个重要流程必出 `sequenceDiagram` 或 `flowchart TD`。
-- **模块结构**：模块组件数 ≥ 2 必出 `graph TB`。
-- **模块依赖**：跨模块依赖必须尽量出 `graph LR` 或 `graph TB`，边上标注服务类/方法。
-- **领域实体多于 3 个**：可加 `classDiagram` 展示字段与关系。
+- **业务上下文**：展示上游入口、当前模块、内部模块和外部业务主机。
+- **场景流程**：每个核心场景尽量出 `sequenceDiagram` 或 `flowchart TD`。
+- **模块协作**：存在内部模块依赖或外部业务主机依赖时，出 `graph LR` 或 `graph TB`。
 
-参考 [mermaid-rules.md](mermaid-rules.md)。
+Mermaid 图中的每个节点和每条边都必须来自 artifacts 或源码证据。参考 [mermaid-rules.md](mermaid-rules.md)。

@@ -69,7 +69,7 @@
 
 ### 3.4 unmatched
 
-§3.1–§3.3 均未命中。flow 仍在文档中保留（在"前端业务流程"小节单列），并在维护注意事项标注。
+§3.1–§3.3 均未命中。flow 仍在工作内存中保留，模块文档可在“待确认点”标注；overview 放入“分析说明与待确认点”，不要伪装成已对齐业务路径。
 
 ## 4. 输出结构（工作内存）
 
@@ -137,19 +137,17 @@
 
 ## 5. 写文档时如何使用对齐结果
 
-- **叶子模块文档 §4.0「前端业务流程」**：遍历 `matched_flows` 中本模块涉及的 flow（按 frontend module → page → flow_id 排序），每条按 [flow-section-template.md](flow-section-template.md) §2.1「前端驱动变体」展开。
-- **叶子模块文档 §4「数据流」**：
-  - 被 `matched_flows` 引用的后端 endpoint 不再单独展开，正文交叉引用 `见 §4.0.X`。
-  - `backend_only_endpoints.important` 仍按重要入口完整展开 sequenceDiagram。
-  - `backend_only_endpoints.minor` 仍按简写 bullet。
-- **叶子模块文档 §4.X「前端独立流程」**（仅当模块内有 `frontend_only_flows` 时出现）：列出未对齐的前端流程，明确标"未在当前后端代码中找到对应 endpoint"。
-- **overview.md §5「关键流程」**：优先选 `matched_flows.overall_confidence == high` 的端到端路径，每条画一张 sequenceDiagram，跨越 `User → Page.vue → frontend API → Controller → Service → RemoteClient → External`。
+- **叶子模块文档 §4「场景流程详解」**：遍历 `matched_flows` 中本模块涉及的 flow（按 frontend module → page → flow_id 排序），每条按 [flow-section-template.md](flow-section-template.md) 的“前端驱动场景”要求展开。
+- **后端未被前端覆盖的重要入口**：`backend_only_endpoints.important` 只有在调用链能说明业务目的时才展开为后端入口场景；否则只进入模块文档“核心业务场景”表格或“待确认点”。
+- **前端未匹配流程**：`frontend_only_flows` 不强行挂到后端模块，不展开为正式场景；在相关模块“待确认点”或 overview “分析说明与待确认点”中列出代表性项。
+- **overview.md §3「页面到模块映射图」**：使用 `matched_flows` 和 `backend_api_usage.json` 展示页面、前端 API、后端模块和模块文档之间的映射。
+- **overview.md §6「关键业务路径索引」**：优先选择 `matched_flows.overall_confidence == high` 且已在模块文档中形成核心场景的路径，只做导航索引，不重复展开完整 sequenceDiagram。
 
 ## 6. confidence 反映到正文措辞
 
 - `high` → 直接陈述，例如 "点击 StepOne 提交按钮触发 `POST /pension/kyc/submit`"
 - `medium` → "可能"措辞，例如 "点击搜索按钮预计触发 `GET /personal-pension/account/list`（基于 template 事件静态分析）"
-- `low` → 不展开为流程章节，仅在"维护注意事项"列出，并标明 URL 由前端动态拼接、无法精确对齐
+- `low` → 不展开为流程章节，仅在“待确认点”或 overview “分析说明与待确认点”列出，并标明 URL 由前端动态拼接、无法精确对齐
 
 ## 7. 反模式
 

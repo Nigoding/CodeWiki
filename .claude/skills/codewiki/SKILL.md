@@ -20,11 +20,11 @@ description: >
 
 **联合生成原则**：当用户同时提供后端仓库和前端仓库，或同时提供 `.nanobot-analysis/` 与 `.frontend-analysis/` 时，默认意图是生成一份业务系统文档。后端是模块、接口、调用链和集成点的主干；前端是页面入口、用户触发顺序和业务流程主线。不要把两个仓库拆成两个独立文档任务，除非用户明确要求“分别生成”。
 
-**业务文档边界**：CodeWiki 生成的是业务说明文档，不是 API 文档、交易码清单或代码细节索引。默认聚焦业务流程、业务规则、模块协作和源码可证实的依赖关系；不要输出交易码列表、完整 API 表格、参数清单或接口手册式内容。接口路径和方法只能作为业务流程证据出现。
+**业务文档边界**：CodeWiki 生成的是业务说明文档，不是 API 文档、交易码清单或代码细节索引。默认聚焦业务场景、业务流程、模块协作、外部业务主机依赖和源码可证实的依赖关系；不要输出交易码列表、完整 API 表格、参数清单或接口手册式内容。接口路径和方法只能作为业务流程证据出现。
 
 **整合目标**：同时存在前端和后端产物时，默认生成一份完整业务说明文档，同时包含前端调用入口、后端接口承接和后端调用链。只有用户明确要求“只关注后端业务流程”时，才可简化前端对齐内容。
 
-**证据优先原则**：业务流程、业务规则、模块依赖和 Mermaid 图都必须有 artifacts 或源码证据。没有代码证据时，只能写“当前源码未确认”或“需结合下游文档确认”，不得按业务常识补全流程、分支、字段、状态或外部系统。
+**证据优先原则**：业务流程、场景分支、模块依赖和 Mermaid 图都必须有 artifacts 或源码证据。没有代码证据时，只能写“当前源码未确认”或“需结合下游文档确认”，不得按业务常识补全流程、分支、字段、状态或外部系统。证据清单用于生成约束，正文默认不输出源码行号、源码片段或完整证据链。
 
 ## 输入
 
@@ -35,7 +35,7 @@ description: >
 - 后端分析产物目录：默认 `.nanobot-analysis/`，也可使用用户指定目录。
 - 前端分析产物目录：默认 `.frontend-analysis/`，也可使用用户指定目录。
 - 文档输出目录：默认 `docs/`，除非用户指定其他目录。
-- 联合输出：存在前端输入时仍只生成一个文档输出目录；`overview.md`、模块文档和关键流程都应融合前后端信息。
+- 联合输出：存在前端输入时仍只生成一个文档输出目录；`overview.md`、模块文档和关键业务路径索引都应融合前后端信息。
 - 前端网关前缀（可选）：若前端经 `/api/v1`、`/gateway` 等网关转发，提示用户声明 `frontend_base_path`，对齐规则见 [前后端对齐规则](references/frontend-backend-alignment.md)。
 - 模块聚合策略：正式 wiki 默认需要模型聚合；快速验证、用户明确要求使用现有 artifacts、或 `module_tree.json` 已人工确认时可跳过。
 
@@ -77,7 +77,7 @@ vuewiki analyze <frontend-repo-path-or-git-url> -o <frontend-analysis-dir> --sub
 node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <frontend-analysis-dir> --submodules auto
 ```
 
-前后端 analyzer 可以分别输出分析产物目录，但 Markdown 文档输出必须合并到同一个 `docs/` 中。前端产物用于补充后端模块文档中的 `§4.0 前端业务流程` 和总览中的“前后端对齐总览”，不是单独生成一套前端 wiki。
+前后端 analyzer 可以分别输出分析产物目录，但 Markdown 文档输出必须合并到同一个 `docs/` 中。前端产物用于补充模块文档中的场景流程，并用于 `overview.md` 的页面到模块映射图和关键业务路径索引，不是单独生成一套前端 wiki。
 
 ## 产物与引用
 
@@ -108,8 +108,8 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 按需读取这些参考文件，不要把所有规则一次性载入：
 
 - 模块文档结构：[模块文档模板](references/module-document-template.md)
-- 仓库总览结构：[仓库总览模板](references/overview-template.md)
-- 重要入口与流程章节：[流程章节模板](references/flow-section-template.md)
+- 功能全景视图结构：[功能全景视图模板](references/overview-template.md)
+- 场景流程章节：[流程章节模板](references/flow-section-template.md)
 - 前后端接口匹配：[前后端对齐规则](references/frontend-backend-alignment.md)
 - 源码依赖分析：[依赖分析规则](references/dependency-analysis-rules.md)
 - 远程调用兜底识别：[远程调用识别规则](references/remote-call-recognition.md)
@@ -180,7 +180,7 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 
 ### 3.5 证据约束与幻觉防护
 
-写 Markdown 前先建立“证据清单”。每条业务流程、业务规则、模块依赖和图中的边都必须能回到以下至少一种证据：
+写 Markdown 前先建立“证据清单”。每条业务流程、场景分支、模块依赖和图中的边都必须能回到以下至少一种证据：
 
 - 后端 `components/*.json` 中的 `entry_points`、`methods[].calls[]`、`remote_endpoints`、`fields[]` 或 `source_code`。
 - 后端 `dependencies.json`、`modules/*.json`、`analysis.json.build_system`。
@@ -191,10 +191,11 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 
 - 没有入口证据时，不生成业务流程。
 - 没有调用链证据时，只能写入口职责，不能扩展成端到端流程。
-- 没有异常、状态流转、条件分支或配置证据时，不生成对应业务分支或规则。
+- 没有异常、状态流转、条件分支或配置证据时，不生成对应业务分支或判断。
 - Mermaid 图中的每个节点和每条边都必须来自证据清单；不能为了图完整而补节点或补边。
 - 使用推断性语言时必须标注证据不足，例如“当前源码未确认该行为”；不得写成确定事实。
-- 若证据不足影响理解，在模块文档“维护注意事项”或总览“分析说明”中说明限制。
+- 若证据不足影响理解，在模块文档“待确认点”或总览“分析说明”中说明限制。
+- 正文默认只保留轻量实现引用，如类名、方法名、组件名；不要输出源码行号、源码片段或逐步证据表，除非用户明确要求代码级追踪。
 
 ### 4. 入口流程清单生成
 
@@ -222,7 +223,7 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 - `frontend_driven_flows`（存在前端 analysis 时可选）。
 - `frontend_only_flows`（存在前端 analysis 且与本模块相关时可选）。
 
-overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend_only_endpoints` 全集，用于总览中的关键流程和前后端对齐总览。
+overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend_only_endpoints` 全集，用于总览中的页面到模块映射图、关键业务路径索引和分析说明。
 
 ### 5. 生成模块文档
 
@@ -240,14 +241,14 @@ overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend
 叶子模块写作：
 
 - 读取 `modules/<module_id>.json`，按需读取组件详情 JSON。
-- 按 [模块文档模板](references/module-document-template.md) 的叶子模块 10 段固定章节输出，不得调整顺序。
-- 篇幅优先给业务流程：业务概述和“数据流/业务流程”必须先讲清楚，再写模块结构、组件和配置。
-- 第 4 节“数据流”按 [流程章节模板](references/flow-section-template.md) 展开；存在前端对齐结果时，优先写 `frontend_driven_flows`，已在前端流程中出现过的后端 endpoint 不重复展开。
-- 业务规则章节谨慎生成：只有当源码、前端流程或配置中能明确证明规则存在且有业务价值时才输出。
+- 按 [模块文档模板](references/module-document-template.md) 的叶子模块 8 段固定章节输出，不得调整顺序。
+- 篇幅优先给模块定位、业务上下文、核心业务场景和场景流程；组件清单、源码行号和代码细节默认不输出。
+- 第 4 节“场景流程详解”按 [流程章节模板](references/flow-section-template.md) 展开；存在前端对齐结果时，优先写 `frontend_driven_flows`，已在前端流程中出现过的后端 endpoint 不重复展开。
+- 不单独生成“业务规则”章节；只有直接改变场景走向的判断、分支、拒绝、降级或兜底逻辑，才写入对应场景的“分支与异常路径”。
+- 第 5 节“业务数据来源与外部依赖”合并关键数据、业务状态和外部系统交互，重点说明 RPC/HTTP/中台服务提供的数据、用途和失败影响。
 - 依赖关系按 [依赖分析规则](references/dependency-analysis-rules.md) 生成；不要仅根据 `pom.xml` 推断模块依赖。
-- 第 5 节“集成点”使用 `modules/*.json.remote_endpoints`；字段不足时按 [远程调用识别规则](references/remote-call-recognition.md) fallback，并标注来源。
-- 每个 Spring 组件标题下必须紧跟 `**File**: <file_path>`。
-- 所有源码引用必须含 `<file_path>:Lstart-Lend`；找不到行号时显式标注“行号未知”。
+- 远程依赖使用 `modules/*.json.remote_endpoints`；字段不足时按 [远程调用识别规则](references/remote-call-recognition.md) fallback，并在“待确认点”说明来源限制。
+- 相关实现只输出轻量引用：`XxxController#method`、`XxxService#method`、`XxxClient#method`、前端 `xxxApi()`。不要输出源码行号、源码片段或完整调用链证据。
 
 父模块写作：
 
@@ -255,11 +256,11 @@ overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend
 - 读取父模块及其子模块摘要，按 [模块文档模板](references/module-document-template.md) 的父模块结构输出。
 - 至少提供一条真实可追溯的跨模块业务流，不复制子模块组件细节。
 
-### 6. 生成仓库总览
+### 6. 生成功能全景总览
 
-所有模块文档完成后生成 `overview.md`，结构参考 [仓库总览模板](references/overview-template.md)。如果任一 `processing_order.json.steps[].module_id` 对应的模块文档尚未生成，不得进入总览生成阶段。
+所有模块文档完成后生成 `overview.md`，结构参考 [功能全景视图模板](references/overview-template.md)。如果任一 `processing_order.json.steps[].module_id` 对应的模块文档尚未生成，不得进入总览生成阶段。
 
-总览必须使用：
+总览是功能全景视图，必须使用：
 
 - `analysis.json` 的仓库、构建系统、统计和诊断信息。
 - `module_tree.json` 的顶层模块导航。
@@ -267,9 +268,9 @@ overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend
 - 已完成模块文档的简短摘要。
 - 若存在前端 analysis：`matched_flows / frontend_only_flows / backend_only_endpoints` 全集。
 
-存在前端 analysis 时，总览必须包含“前后端对齐总览”，说明对齐统计、匹配等级分布、典型未对齐流程和可信度限制。关键流程优先选择 `matched_flows.overall_confidence == high` 的端到端业务路径。
+存在前端 analysis 时，总览必须包含“页面到模块映射图”和“关键业务路径索引”；未匹配、低置信度或动态路径等对齐限制统一放入“分析说明与待确认点”。关键业务路径优先选择已生成模块文档中的核心场景和 `matched_flows.overall_confidence == high` 的路径。
 
-不要在同一次任务中生成“后端 overview”和“前端 overview”两份并列总览；联合场景只生成一份 `overview.md`，其系统架构图同时包含前端页面、后端模块和外部系统。
+不要在同一次任务中生成“后端 overview”和“前端 overview”两份并列总览；联合场景只生成一份 `overview.md`，其功能上下文图同时包含前端页面、后端模块和外部业务主机。
 
 ### 7. 完成前校验
 
@@ -280,7 +281,7 @@ overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend
 - `processing_order.json.steps` 中每个 `module_id` 都已生成对应文档；不能只有 `overview.md`。
 - `overview.md` 只做导航和全景总结，不能替代模块文档。
 - 文档没有退化成 API 文档：不得存在交易码列表、完整接口参数表或大段接口清单。
-- 每条业务流程、业务规则、模块依赖和 Mermaid 边都能追溯到证据清单；证据不足处已明确标注，未写成确定事实。
+- 每条业务流程、场景分支、模块依赖和 Mermaid 边都能追溯到证据清单；证据不足处已明确标注，未写成确定事实。
 - 内部 Markdown 链接可解析。
 - Mermaid 语法符合 [Mermaid 规则](references/mermaid-rules.md)；如果没有可用校验工具，最终报告中说明。
 - 文档没有引用 artifacts 或源码中不存在的类、接口、依赖、字段、URL 或流程。
@@ -294,7 +295,7 @@ overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend
 首轮完整生成、批量重写或重要结构调整后，向用户确认是否符合预期，说明：
 
 - 已生成或修改的文档范围。
-- 已覆盖的核心业务流程。
+- 已覆盖的核心业务路径。
 - 仍不确定或证据不足的边界。
 
 在用户确认方向前，不要连续多轮大规模重写。用户明确指出问题后，下一轮只围绕该问题修正；重要修改前先确认方向。
@@ -307,7 +308,7 @@ overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend
 - artifacts schema 不匹配：停止生成，列出不兼容文件或字段。
 - 模型聚合无法确定业务边界：保留更高层模块，记录原因，不强行细拆。
 - 组件源码或解析数据缺失：在文档中标注限制，避免推测性说明。
-- `remote_url_unresolved` 数量较多：在受影响模块的维护注意事项中提示配置项或远程 URL 解析不完整。
-- 前端 analysis 缺失或解析失败：自动降级为纯后端流程，不生成前端业务流程和前后端对齐总览，并在最终报告中说明原因。
+- `remote_url_unresolved` 数量较多：在受影响模块的“待确认点”中提示配置项或远程 URL 解析不完整。
+- 前端 analysis 缺失或解析失败：自动降级为纯后端视角，不生成页面到模块映射图，并在最终报告中说明原因。
 - 前端 endpoint 与后端 0 命中：保留 `frontend_only_flows`，并提示当前前端 API 集合可能不属于该后端服务边界。
-- 前端 `confidence == low` 的 step 比例过高：在前后端对齐总览中说明可信度受限。
+- 前端 `confidence == low` 的 step 比例过高：在“分析说明与待确认点”中说明可信度受限。

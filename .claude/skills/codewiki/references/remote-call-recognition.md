@@ -14,7 +14,7 @@
 - `via_method`：哪个本地方法发起的调用
 - `line`：源码行号
 
-文档中引用远程调用时，使用这些字段直接填充 [流程章节模板](flow-section-template.md)。
+文档中引用远程调用时，使用这些字段支撑 [流程章节模板](flow-section-template.md) 的外部依赖、调用方式、业务数据含义和失败影响说明；正文默认不输出源码行号或完整证据链。
 
 ## 2. Fallback 识别（analyzer 未捕获或 schema < 1.1）
 
@@ -62,7 +62,7 @@ Fallback 步骤（顺序检查）：
 1. 字符串字面量：`"http://..."` 或 `"/api/..."` → 直接使用。
 2. 占位符：`${some.config.url}` → 使用 `${some.config.url}` 原样写入，并在文档中标注"需结合 `application.yml`/`bootstrap.yml` 解析实际地址"。
 3. 字符串拼接 / `String.format(...)` / `UriBuilder` → 取出可见字面量部分，剩余部分用 `<runtime>` 表示。
-4. 完全无法识别 → 写 `<unresolved>`，并在文档"维护注意事项"中标记。
+4. 完全无法识别 → 写 `<unresolved>`，并在文档“待确认点”中标记。
 
 ### 2.6 HTTP 方法推断
 
@@ -72,15 +72,15 @@ Fallback 步骤（顺序检查）：
 
 ## 3. 配置文件交叉引用
 
-发现 `${...}` 占位符时，建议在文档中追加一行"配置项：见 `application.yml` 或 `bootstrap.yml`"。不强制读取 yml；如需读取，仅在用户授权且模块文档 Configuration 章节用得到时进行，并明确引用 `<file>:<line>`。
+发现 `${...}` 占位符时，建议在文档中追加一行"配置项：见 `application.yml` 或 `bootstrap.yml`"。不强制读取 yml；如需读取，仅在用户授权且模块文档“配置、开关与错误处理”章节用得到时进行。正文默认只写配置项名称和业务影响，不输出源码行号。
 
 ## 4. 输出要求
 
 无论使用 analyzer 数据还是 fallback：
 
-- **Integration Points 表**必须列出该模块所有远程端点，至少包含列：HTTP 方法、URL（或占位符）、调用类、来源（`analyzer` / `fallback`）。
-- **流程章节**：当一个入口的调用链命中任何远程端点时，将其升级为"重要入口"，套 [flow-section-template.md](flow-section-template.md)。
-- **维护注意事项**：
+- **业务数据来源与外部依赖**：列出与核心场景相关的远程依赖，说明外部业务主机、调用方式、获取或提交的数据、影响场景和失败影响；不要输出完整接口表。
+- **场景流程详解**：当一个入口的调用链命中远程端点，且调用链能说明业务目的时，可按 [flow-section-template.md](flow-section-template.md) 展开为核心场景。
+- **待确认点**：
   - 若使用 fallback，标注"远程端点经源码 fallback 识别，未由 analyzer 提供，下次升级 analyzer 后建议重新生成文档"。
   - 列出 `<unresolved>` URL 数量，提示后续补全字面量解析或重跑 analyzer。
 
@@ -94,4 +94,4 @@ Fallback 步骤（顺序检查）：
 
 替换为：
 
-- "`OrderService` 第 102 行通过 `stockFeignClient.freezeStock()` 调用 `${inventory.platform.url}/inventory/freeze`（POST）"。
+- "`OrderService#freezeStock()` 通过 `stockFeignClient.freezeStock()` 调用 `${inventory.platform.url}/inventory/freeze`（POST），用于下单前冻结库存"。
