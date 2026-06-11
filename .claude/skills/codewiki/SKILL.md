@@ -1,22 +1,30 @@
 ---
 name: codewiki
 description: >
-  基于 javawiki-analyzer 和 vuewiki-analyzer 生成的 JSON 分析产物，为后端 Java 仓库或前后端组合仓库生成业务代码 wiki。
-  当用户要求为 Java/Maven/Spring 后端仓库、Vue2 前端仓库、Git 仓库地址、已有 .nanobot-analysis / .frontend-analysis
-  产物生成或刷新架构文档、模块文档、页面业务流程、接口调用链、依赖说明、nanoclaw/nanobot 代码 wiki，
-  或要求使用模型聚合模块边界时使用。
+  基于 javawiki-analyzer 和 vuewiki-analyzer 生成的 JSON 分析产物，为 Java/Maven/Spring 后端仓库、
+  Vue2/Owl 前端仓库或前后端组合仓库生成面向开发人员的业务代码 wiki。用户同时提供前端仓库和后端仓库时，
+  必须生成一份融合前端页面流程与后端调用链的业务文档，而不是分别为两个仓库生成独立文档。用户要求生成或刷新架构文档、
+  模块文档、页面业务流程、接口调用链、前后端接口对齐、依赖说明、nanoclaw/nanobot 代码 wiki，
+  或要求使用模型聚合业务模块边界时使用。
 ---
 
 # CodeWiki 业务文档生成
 
-这个 skill 是 CodeWiki 的 agent 侧流程，负责两件事：
+这个 skill 是 CodeWiki 的 agent 侧流程，负责三件事：
 
-- **模块聚合**：读取 `javawiki-analyzer` 的确定性后端分析事实和候选模块，必要时使用模型聚合出最终后端模块树。
-- **前端流程融合**：读取 `vuewiki-analyzer` 的页面、组件和 API 调用流程，把页面触发顺序映射到后端接口。
-- **文档生成**：只读取最终 artifacts，生成面向开发人员快速上手的业务文档。
+- **模块聚合**：读取 `javawiki-analyzer` 的确定性分析事实和候选模块，必要时使用模型聚合最终业务模块树。
+- **前后端流程融合**：读取 `vuewiki-analyzer` 的页面、组件和 API 调用流程，把页面触发顺序映射到后端接口。
+- **文档生成**：只基于最终 artifacts 生成业务 wiki，不凭空补充 artifacts 或源码中不存在的信息。
 
-`javawiki-analyzer` 不内置模型调用。它只负责 Java 语法分析、Maven 扫描、组件索引、依赖图、入口识别和候选模块输出。模型聚合由当前 agent 完成，但聚合结果必须写回 JSON artifacts，不能在写文档时临时改变模块边界。
-`vuewiki-analyzer` 不内置模型调用。它负责 Vue2/Owl 前端仓库的模块、页面入口、子组件闭包、API 定义和页面调用流程提取。当前 agent 负责把前端 `method + path` 与后端 `entry_points` 对齐。
+`javawiki-analyzer` 和 `vuewiki-analyzer` 都不内置模型调用。代码分析、组件索引、依赖抽取、入口识别由 analyzer 完成；业务模块聚合、前后端对齐解释和文档写作由当前 agent 完成。若执行模型聚合，必须先把结果写回最终 JSON artifacts，再开始生成 Markdown。
+
+**联合生成原则**：当用户同时提供后端仓库和前端仓库，或同时提供 `.nanobot-analysis/` 与 `.frontend-analysis/` 时，默认意图是生成一份业务系统文档。后端是模块、接口、调用链和集成点的主干；前端是页面入口、用户触发顺序和业务流程主线。不要把两个仓库拆成两个独立文档任务，除非用户明确要求“分别生成”。
+
+**业务文档边界**：CodeWiki 生成的是业务说明文档，不是 API 文档、交易码清单或代码细节索引。默认聚焦业务流程、业务规则、模块协作和源码可证实的依赖关系；不要输出交易码列表、完整 API 表格、参数清单或接口手册式内容。接口路径和方法只能作为业务流程证据出现。
+
+**整合目标**：同时存在前端和后端产物时，默认生成一份完整业务说明文档，同时包含前端调用入口、后端接口承接和后端调用链。只有用户明确要求“只关注后端业务流程”时，才可简化前端对齐内容。
+
+**证据优先原则**：业务流程、业务规则、模块依赖和 Mermaid 图都必须有 artifacts 或源码证据。没有代码证据时，只能写“当前源码未确认”或“需结合下游文档确认”，不得按业务常识补全流程、分支、字段、状态或外部系统。
 
 ## 输入
 
@@ -24,14 +32,16 @@ description: >
 
 - 后端输入：Java/Maven 仓库路径、Git URL，或已有后端分析产物目录。
 - 前端输入（可选）：Vue2/Owl 仓库路径、Git URL，或已有前端分析产物目录。
-- 后端分析产物目录：默认 `.nanobot-analysis/`，也可以使用用户指定的 `.tmp-*-analysis/`。
-- 前端分析产物目录：默认 `.frontend-analysis/`，也可以使用用户指定目录。
+- 后端分析产物目录：默认 `.nanobot-analysis/`，也可使用用户指定目录。
+- 前端分析产物目录：默认 `.frontend-analysis/`，也可使用用户指定目录。
 - 文档输出目录：默认 `docs/`，除非用户指定其他目录。
-- 是否需要模型聚合：如果用户关心业务域模块、CodeWiki 风格模块聚合，默认需要；如果只要求快速生成，可使用 analyzer 的规则 fallback。
-- **前端分析产物**（可选）：若用户同时提供 Vue2 前端代码或 `vuewiki-analyzer` 产生的 `.frontend-analysis/`（含 `page_flows.json`、`backend_api_usage.json`、`api_index.json`），文档将以前端业务流程为主线编排。前端产物缺失时按纯后端流程生成，不阻塞主流程。
-- 前端网关前缀（可选）：若前端通过网关（如 `/api/v1`、`/gateway`）转发到后端，提示用户在 prompt 中显式声明 `frontend_base_path`，对齐时会先剥离该前缀（见 [前后端对齐规则](references/frontend-backend-alignment.md) §2.2）。
+- 联合输出：存在前端输入时仍只生成一个文档输出目录；`overview.md`、模块文档和关键流程都应融合前后端信息。
+- 前端网关前缀（可选）：若前端经 `/api/v1`、`/gateway` 等网关转发，提示用户声明 `frontend_base_path`，对齐规则见 [前后端对齐规则](references/frontend-backend-alignment.md)。
+- 模块聚合策略：正式 wiki 默认需要模型聚合；快速验证、用户明确要求使用现有 artifacts、或 `module_tree.json` 已人工确认时可跳过。
 
-如果后端分析产物不存在，先运行后端 analyzer：
+## 运行分析器
+
+如果后端分析产物不存在，先运行：
 
 ```bash
 javawiki analyze <repo-path-or-git-url> -o <analysis-dir> --submodules auto
@@ -55,7 +65,7 @@ $env:PYTHONPATH='javawiki-analyzer'; python -m javawiki_analyzer.cli.main analyz
 javawiki analyze <local-repo-path> -o <analysis-dir> --init-submodules
 ```
 
-如果提供了前端仓库且前端分析产物不存在，运行前端 analyzer：
+如果提供了前端仓库且前端分析产物不存在，运行：
 
 ```bash
 vuewiki analyze <frontend-repo-path-or-git-url> -o <frontend-analysis-dir> --submodules auto
@@ -67,11 +77,11 @@ vuewiki analyze <frontend-repo-path-or-git-url> -o <frontend-analysis-dir> --sub
 node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <frontend-analysis-dir> --submodules auto
 ```
 
-## 分析产物
+前后端 analyzer 可以分别输出分析产物目录，但 Markdown 文档输出必须合并到同一个 `docs/` 中。前端产物用于补充后端模块文档中的 `§4.0 前端业务流程` 和总览中的“前后端对齐总览”，不是单独生成一套前端 wiki。
 
-后端字段细节见 [后端分析产物 Schema](references/analysis-artifact-schema.md)。
+## 产物与引用
 
-后端核心文件：
+后端字段细节见 [后端分析产物 Schema](references/analysis-artifact-schema.md)。核心输入：
 
 - `analysis.json`
 - `candidate_modules.json`
@@ -82,241 +92,184 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 - `modules/*.json`
 - `components/*.json`
 
-`candidate_modules.json` 是模型聚合输入；`module_tree.json`、`processing_order.json` 和 `modules/*.json` 是文档生成输入。若执行了模型聚合，必须先更新这些最终文档输入，再开始写 Markdown。
+前端字段细节见 [前端分析产物 Schema](references/frontend-artifact-schema.md)。核心输入：
 
-如果用户同时提供 Vue2 前端分析产物，读取 [前端分析产物 Schema](references/frontend-artifact-schema.md) 与 [前后端对齐规则](references/frontend-backend-alignment.md)。前端产物用于补充页面入口、用户触发点、API 调用顺序和后端接口使用清单；与后端融合时以规范化后的 `(HTTP_method, path)` 作为 join key，按 4 个匹配等级（exact / placeholder_normalized / suffix_match / unmatched）分类。
+- `analysis.json`
+- `module_tree.json`
+- `page_index.json`
+- `component_index.json`
+- `api_index.json`
+- `page_flows.json`
+- `backend_api_usage.json`
+- `modules/`
+- `pages/`
+- `components/`
+
+按需读取这些参考文件，不要把所有规则一次性载入：
+
+- 模块文档结构：[模块文档模板](references/module-document-template.md)
+- 仓库总览结构：[仓库总览模板](references/overview-template.md)
+- 重要入口与流程章节：[流程章节模板](references/flow-section-template.md)
+- 前后端接口匹配：[前后端对齐规则](references/frontend-backend-alignment.md)
+- 源码依赖分析：[依赖分析规则](references/dependency-analysis-rules.md)
+- 远程调用兜底识别：[远程调用识别规则](references/remote-call-recognition.md)
+- Mermaid 语法约束：[Mermaid 规则](references/mermaid-rules.md)
 
 ## 工作流
 
 ### 1. 检查分析状态
 
-先读取后端 `analysis.json`。如果提供了前端输入，也读取前端 `analysis.json`。
+先读取后端 `analysis.json`，必要时读取前端 `analysis.json`。schema 或关键文件不兼容时停止生成并说明缺失字段。
 
 后端检查：
 
-- `schema_version` 是否支持。当前 skill 期望 `1.1`；遇到 `1.0` 仍可继续，但必须在最终报告中标注"远程调用信息可能不完整，建议重新运行 analyzer 以获取 `remote_endpoints` / `external_systems`"。低于 `1.0` 直接停止。
-- `summary.language` 是否为 `java`。
-- `build_system.type` 是否为 `maven` 或兼容的未知类型。
-- `summary` 中 Java 文件数、组件数、REST endpoint 数是否符合预期。
-- `diagnostics` 是否为空，或是否存在会影响文档可信度的问题。
-- `aggregation.mode` 是否为 `rule_fallback`；如果是，说明当前模块树还没有经过模型聚合。
-- 是否存在 `submodule_missing`、`submodule_update_failed`、`submodule_init_required`、`maven_module_path_missing` 或 `java_source_not_found` 诊断；如果存在，说明分析结果可能缺少源码或 submodule 中的代码。
-- 如果存在 `java_source_outside_maven_modules`，说明 analyzer 找到了 Maven module 未覆盖的 Java 文件，通常来自 submodule、父 POM 自身源码或非标准目录；生成文档时应把这些临时 source module 当作分析证据，而不是 Maven 真实模块。
-- 如果存在 `no_root_pom_discovered_subprojects`，说明仓库根没有 `pom.xml`，analyzer 已自动在子目录中发现 N 个独立 Maven 项目作为根（典型场景：容器仓库 + 多 Git submodule）。读取 `build_system.discovered_subproject_roots` 拿到自动识别出的子项目根列表；文档生成时应把每个子项目根视为独立的业务子系统（而非同一应用的不同分层模块），并在总览"分析说明"中明示该仓库是容器仓库结构。若同时存在 `submodule_missing`，说明部分子项目源码尚未拉取，文档中相关子项目应标注"源码缺失，本次未分析"。
-- 如果存在 `no_pom_found`，说明整个仓库及子目录都找不到 `pom.xml`，analyzer 只能把整个仓库当作单一 Java 源码根处理；此时模块划分基于目录结构，不代表 Maven 真实组织，必须在文档中提示用户。
+- `schema_version` 支持：当前期望 `1.1`；遇到 `1.0` 可继续，但最终报告必须提示远程调用信息可能不完整；低于 `1.0` 停止。
+- `summary.language == "java"`。
+- `build_system.type` 为 `maven` 或 analyzer 支持的未知兼容类型。
+- `summary` 中 Java 文件数、组件数、REST endpoint 数符合预期。
+- `diagnostics` 中是否存在会影响可信度的问题，特别是 `submodule_missing`、`submodule_update_failed`、`submodule_init_required`、`maven_module_path_missing`、`java_source_not_found`、`java_source_outside_maven_modules`、`no_root_pom_discovered_subprojects`、`no_pom_found`。
+- `aggregation.mode == "rule_fallback"` 时，说明模块树尚未经过模型聚合。
 
-如果存在解析失败、跳过核心文件或依赖图异常，先向用户说明影响。
-如果存在 submodule 或 Maven module 缺失诊断，正式文档生成前应建议用户重新拉取/初始化 submodule 后重跑 analyzer；用户仍要求继续时，必须在总览的"分析说明"中标注缺失范围。
-
-如果指定了前端分析产物目录，额外检查：
-
-- `page_flows.json` 与 `backend_api_usage.json` 是否存在；任一缺失则降级为纯后端流程，并在最终报告中说明。
-- `analysis.json.framework.name` 是否为 `vue2` 或 `owl-vue2`（其他框架按 schema 允许范围处理，但需提示用户）。
-- `summary.total_page_flows`、`summary.total_backend_calls` 是否大于 0；若全为 0 说明前端 analyzer 未识别出业务流，降级为纯后端流程。
-- `diagnostics` 中是否存在 `frontend_runtime_path_unresolved`、`api_call_confidence_low_majority` 等会显著影响对齐质量的诊断；存在时需在总览"前后端对齐总览"小节明示。
+存在 submodule 或 Maven module 缺失诊断时，正式生成前建议用户重新拉取或初始化 submodule 后重跑 analyzer；用户仍要求继续时，在总览“分析说明”中标注缺失范围。
 
 前端检查：
 
-- `schema_version` 是否支持。
-- `framework.name` 是否为 `vue`，`framework.version_major` 是否为 `2`。
-- `entry_config.path` 是否为 `owl.config.js` 或用户确认的入口配置。
-- `summary.total_pages`、`summary.total_api_defs`、`summary.total_page_flows` 是否符合预期。
-- `diagnostics` 是否包含 `owl_config_not_found`、`owl_pages_not_found`、`page_entry_not_found`、`submodule_missing` 或 API 动态路径告警。
+- 必需文件 `page_flows.json`、`backend_api_usage.json`、`api_index.json` 存在；任一缺失则降级为纯后端流程。
+- `framework.name == "vue"` 且 `framework.version_major == 2`。
+- `entry_config.path` 为 `owl.config.js` 或用户确认的入口配置。
+- `summary.total_pages`、`summary.total_api_defs`、`summary.total_page_flows`、`summary.total_backend_api_usages` 符合预期；若 `total_page_flows == 0` 或 `total_backend_api_usages == 0`，降级为纯后端流程。
+- `diagnostics` 中若存在 `owl_config_not_found`、`owl_pages_not_found`、`page_entry_not_found`、`submodule_missing`、`frontend_runtime_path_unresolved`、`api_call_confidence_low_majority`，在总览中说明对齐可信度限制。
 
-如果存在前端入口配置缺失或大量页面入口缺失，前后端融合文档会不完整；继续生成时必须在总览“分析说明”中标注。
+### 2. 决定是否模型聚合
 
-### 2. 决定是否执行模型聚合
+以下情况执行模型聚合：
 
-以下情况应执行模型聚合：
+- 用户希望接近原 CodeWiki 的业务模块聚合效果。
+- `module_tree.json` 明显按技术层聚合，而不是按业务域或系统能力聚合。
+- `analysis.json.aggregation.mode == "rule_fallback"`，且用户要生成正式 wiki。
+- `candidate_modules.json` 存在，且包含 Maven、包上下文、技术层、入口分组等候选边界。
 
-- 用户希望接近原 CodeWiki 的模块聚合效果。
-- analyzer 的 `module_tree.json` 明显按技术层聚合，而不是按业务域或系统能力聚合。
-- `analysis.json.aggregation.mode` 是 `rule_fallback`，且用户要生成正式 wiki。
-- `candidate_modules.json` 存在且包含 Maven、包上下文、技术层、入口分组等候选边界。
+聚合只读取紧凑信息：`analysis.json`、`candidate_modules.json`、`component_index.json`、`dependencies.json`。聚合目标是生成业务上可解释的模块树；每个组件只能归属一个最终叶子模块；子模块必须早于父模块出现在 `processing_order.json`。
 
-以下情况可以跳过模型聚合：
-
-- 用户明确要求使用现有 artifacts。
-- 只是 smoke test 或快速验证文档生成链路。
-- `module_tree.json` 已经是人工确认过的最终模块树。
-
-### 3. 模型聚合阶段
-
-执行聚合时，只读取必要的紧凑信息：
-
-- `analysis.json`：仓库、Maven 模块、统计和诊断。
-- `candidate_modules.json`：候选模块、候选来源、候选组件和候选依赖摘要。
-- `component_index.json`：组件名称、包、stereotype、文件路径和 artifact 路径。
-- `dependencies.json`：组件级和模块级依赖。
-
-聚合目标：
-
-- 生成业务上可解释的模块树，而不是简单按技术层拆分。
-- 优先保留 Maven 多模块、业务包名、DDD 分层、REST 入口和依赖方向共同支持的边界。
-- 为每个最终模块分配稳定 `module_id`、`name`、`kind`、`doc_path`、`component_ids`、`child_module_ids` 和 `depends_on_module_ids`。
-- 子模块必须早于父模块出现在 `processing_order.json`。
-- 每个组件只能归属一个最终叶子模块。
-
-聚合完成后写回：
+聚合完成后只写回：
 
 - `module_tree.json`
 - `processing_order.json`
 - `modules/*.json`
 - `analysis.json.aggregation`
 
-`analysis.json.aggregation.mode` 应改为 `agent_llm`，并记录 `candidate_artifact`、聚合时间、聚合说明和无法确定的边界。不要修改 `components/*.json`、`component_index.json` 或源码仓库。
+`analysis.json.aggregation.mode` 应改为 `agent_llm`，并记录候选输入、聚合时间、聚合说明和不确定边界。不要修改 `components/*.json`、`component_index.json` 或源码仓库。
 
-### 4. 验证最终生成计划
+### 3. 验证最终生成计划
 
-写文档前验证：
+写 Markdown 前验证：
 
-- 每个必需 artifact 存在。
-- `module_tree.modules` 中每个 `module_id` 唯一。
-- 每个模块 `doc_path` 唯一，且位于文档输出目录内。
+- 必需 artifacts 存在。
+- `module_tree.modules[].module_id` 唯一。
+- 每个模块 `doc_path` 唯一，且最终写入位置位于文档输出目录内。
 - `processing_order.steps` 覆盖所有模块，且子模块早于父模块。
 - 每个 `modules/<module_id>.json` 存在，并与 `module_tree.json` 一致。
-- 每个 `component_index` 中的 `artifact_path` 指向存在的 `components/*.json`。
+- 每个 `component_index` 的 `artifact_path` 指向存在的 `components/*.json`。
 - 每个组件最多出现在一个最终叶子模块中。
 
-计划无效时停止生成，列出缺少或冲突的文件和字段。
+如果存在前端产物，额外验证：
 
-如果提供了前端产物，还要验证：
+- `page_index.json`、`component_index.json`、`api_index.json`、`page_flows.json`、`backend_api_usage.json` 存在。
+- `page_id`、`flow_id` 唯一。
+- `backend_api_usage.json` 中的 `method + path` 可用于匹配后端 `entry_points`；匹配不到的调用进入 `frontend_only_flows`，不得丢弃。
 
-- `page_index.json`、`component_index.json`、`api_index.json`、`page_flows.json`、`backend_api_usage.json` 均存在。
-- 每个 `page_id` 唯一，且 `page_index.pages[].entry_file` 存在或有对应诊断。
-- 每个 `flow_id` 唯一。
-- `backend_api_usage.json` 中的 `method + path` 可用于匹配后端 `entry_points`；匹配不到的接口进入“未匹配前端接口清单”，不得静默丢弃。
+### 3.5 证据约束与幻觉防护
 
-### 4.5 入口流程清单生成
+写 Markdown 前先建立“证据清单”。每条业务流程、业务规则、模块依赖和图中的边都必须能回到以下至少一种证据：
 
-写文档前，必须先扫描所有叶子模块产出"入口流程清单"，作为后续写作的依据。该清单不写入磁盘，仅作为本次生成的工作内存。
+- 后端 `components/*.json` 中的 `entry_points`、`methods[].calls[]`、`remote_endpoints`、`fields[]` 或 `source_code`。
+- 后端 `dependencies.json`、`modules/*.json`、`analysis.json.build_system`。
+- 前端 `page_flows.json`、`api_index.json`、`backend_api_usage.json`、`pages/*.json` 或 `components/*.json`。
+- 必要时用源码检索补充确认的 `import`、注入字段、方法调用、配置项或异常抛出位置。
 
-#### 4.5.A 后端入口与调用链还原（始终执行）
+硬约束：
 
-1. 遍历每个叶子模块 `modules/<module_id>.json` 的 `entry_points`，加上每个组件 `components/*.json` 中的 `entry_points`（REST endpoint 与 outbound endpoint 都纳入）；以及 `@Scheduled` / `@RabbitListener` / `@KafkaListener` / `@EventListener` 注解的方法（来自 `components/*.json.methods[].annotations`）。
-2. 对每个入口，沿 `methods[].calls[].resolved_component` 递归还原调用链。递归限深 6，去环（同一 `component_id` 在一条链上不重复展开）。
-3. 同时记录命中的 `remote_endpoints`（来自每个被访问组件的顶层 `remote_endpoints` 或方法内嵌 `remote_endpoints`）。
-4. 对每个入口判定是否为 **重要入口**，命中任一即标记：
-   - 调用深度 ≥ 3；
-   - 调用链命中至少一个 `remote_endpoints` 项（不论 analyzer 提取的 URL 是否完整）；
-   - 调用链跨越 ≥ 2 个不同 stereotype；
-   - 入口本身是 `@Scheduled` / 消息消费者 / 事件监听。
-5. 阈值可由用户在 prompt 中覆盖（如 "把所有 endpoint 都当作重要入口"）。
-6. 若 `schema_version < 1.1` 或 `summary.total_remote_endpoints` 字段缺失，按 [远程调用 fallback 识别](references/remote-call-recognition.md) 在写文档时补充识别。
+- 没有入口证据时，不生成业务流程。
+- 没有调用链证据时，只能写入口职责，不能扩展成端到端流程。
+- 没有异常、状态流转、条件分支或配置证据时，不生成对应业务分支或规则。
+- Mermaid 图中的每个节点和每条边都必须来自证据清单；不能为了图完整而补节点或补边。
+- 使用推断性语言时必须标注证据不足，例如“当前源码未确认该行为”；不得写成确定事实。
+- 若证据不足影响理解，在模块文档“维护注意事项”或总览“分析说明”中说明限制。
 
-#### 4.5.B 前后端对齐（仅当存在前端分析产物时执行）
+### 4. 入口流程清单生成
 
-详细规则见 [前后端对齐规则](references/frontend-backend-alignment.md)。在 4.5.A 完成后追加以下步骤：
+写文档前必须先生成“入口流程清单”，仅作为本次生成的工作内存，不写入磁盘。
 
-**Step 1：构建后端 endpoint 索引**
+后端入口始终执行：
 
-把所有后端 REST `entry_points` 的 `(http_method, path)` 按 [对齐规则](references/frontend-backend-alignment.md) §2 规范化（占位符归一、统一斜杠）后建索引：`(METHOD, normalized_path) → entry_point`。同一规范化 key 命中多个 entry_point 时全部保留（多义需后续提示）。
+- 遍历叶子模块和组件中的 REST `entry_points`，并纳入 `@Scheduled`、`@RabbitListener`、`@KafkaListener`、`@EventListener` 方法。
+- 沿 `methods[].calls[].resolved_component` 递归还原调用链，默认限深 6，并对同一调用链去环。
+- 记录调用链命中的 `remote_endpoints`。
+- 命中任一条件即标记为重要入口：调用深度 ≥ 3、命中远程调用、跨 ≥ 2 个 stereotype、入口本身是定时任务/消息消费者/事件监听。
+- 若 `schema_version < 1.1` 或远程调用字段缺失，按 [远程调用识别规则](references/remote-call-recognition.md) 补充识别。
 
-**Step 2：剥离网关前缀（若需要）**
+存在前端产物时，按 [前后端对齐规则](references/frontend-backend-alignment.md) 生成工作内存：
 
-- 用户显式声明 `frontend_base_path` → 在 Step 3 规范化前从前端 path 中剥离。
-- 未声明但 `api_index.json` 中所有 path 都以同一前缀开头且该前缀不在后端索引中 → 自动推断并提示用户确认。
+- `matched_flows`：前端 flow 中的 API 调用能对齐到后端 endpoint。
+- `frontend_only_flows`：前端 flow 未在当前后端代码中找到对应 endpoint。
+- `backend_only_endpoints`：未被任何前端 flow 引用的后端入口。
 
-**Step 3：遍历前端 flow 并连接**
+每个叶子模块的工作内存至少包含：
 
-读取 `page_flows.json.flows[]`，对每条 flow 按 `order` 升序遍历 `steps[]`：
+- 重要入口列表。
+- 次要入口列表。
+- 命中的外部系统集合。
+- `frontend_driven_flows`（存在前端 analysis 时可选）。
+- `frontend_only_flows`（存在前端 analysis 且与本模块相关时可选）。
 
-- 对每个 `type == api_call` 的 step，规范化 `(method, path)` 后查后端索引。
-- 按 [对齐规则](references/frontend-backend-alignment.md) §3 优先级匹配：exact → placeholder_normalized → suffix_match → unmatched。每命中即停止后续等级尝试。
-- 把 step 的 `(method, path, function_name, defined_in, confidence)` 与命中的 `entry_point` / `match_level` 记入工作内存。
-
-**Step 4：分类**
-
-按 [对齐规则](references/frontend-backend-alignment.md) §4 输出三个集合：
-
-- `matched_flows`：所有 step 都命中（或仅个别 step unmatched）的 flow；每条 flow 含 `overall_confidence`（按 §4.1 公式计算）。
-- `frontend_only_flows`：所有 step 均 unmatched 的 flow，或主要业务 step 未匹配的 flow，原样保留，标 `reason: unmatched`。
-- `backend_only_endpoints`：未被任何前端 flow 引用的后端 entry_point，复用 4.5.A 的"重要入口"启发式标 `importance: important | minor`。
-
-**Step 5：把 matched_flow 归属到后端叶子模块**
-
-对每条 `matched_flow.steps[i].backend_entry_point`，根据 entry_point 所在 component_id 反查 `module_tree.json` 找到其所属叶子模块；同一条 flow 的多个 step 可跨多个模块，每个被涉及到的后端叶子模块的工作内存中追加 `frontend_driven_flows: [...]`。
-
-#### 4.5.C 工作内存形态
-
-- 每个叶子模块的工作内存：`{ 重要入口列表, 次要入口列表, 命中的外部系统集合, frontend_driven_flows (可选), frontend_only_flows (可选, 仅本模块涉及) }`
-- 重要入口含：`entry_qualified_name#method`、`file_path:Lstart-Lend`、调用链节点序列（含每步行号）、命中的 remote_endpoints 列表。
-- `frontend_driven_flows` 含：`flow_id`、`page_title`、`biz_id`、`trigger`、`steps[]`（含 `match_level`、`backend_entry_point`、`confidence`）、`overall_confidence`。
-- overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend_only_endpoints` 全集，用于生成 §5「关键流程」与 §5.X「前后端对齐总览」。
-
-如果提供了前端产物，还必须生成“页面业务流程清单”（仅工作内存）：
-
-1. 遍历 `backend_api_usage.json.backend_usages`，按 `method + path` 匹配后端 `entry_points`。
-2. 对每条命中的前端调用，记录：`page_title`、`page_id`、`component_file`、`trigger`、`api_call_id`、`method`、`path`、后端 Controller/handler、后端模块。
-3. 对同一 `page_id` 的 `page_flows.json.flows` 按 `steps[].order` 保留调用顺序。
-4. 未匹配后端接口的前端调用单独保留，写入总览和相关页面/模块文档的“未匹配接口”说明。
-5. 如果多个后端接口 path 模板与前端 path 同时匹配，优先精确字面量匹配，其次路径变量模板匹配；仍有歧义时标注“多候选后端接口”。
+overview 工作内存额外保存 `matched_flows / frontend_only_flows / backend_only_endpoints` 全集，用于总览中的关键流程和前后端对齐总览。
 
 ### 5. 生成模块文档
 
-#### 5.1 选择文档结构
+**禁止 overview-only 输出**：正式文档生成必须先生成模块文档，再生成 `overview.md`。不得只生成一份总览文档来替代子模块文档；不得把“后续可继续补充模块文档”作为完成状态。
 
-读完 §4.5 清单后，统计叶子模块数：
+先根据叶子模块数量决定文档结构：
 
-- **叶子模块数 ≤ 8**：使用扁平结构。直接在文档输出根目录写 `<module_name>.md`（如 `docs/order.md`），不进入 `modules/` 子目录；忽略原 `module_tree.json` 中的父/叶嵌套，所有模块平铺。`overview.md` 链接直接指向这些文件。
-- **叶子模块数 > 8**：保留 `module_tree.json` 中的父/叶嵌套，按原 `doc_path` 写入；父模块文档负责导航到子模块。
+- 叶子模块数 ≤ 8：使用扁平结构，模块文档直接写到输出根目录。
+- 叶子模块数 > 8：保留 `module_tree.json` 中的父/叶结构，按 `doc_path` 写入。
 
-不论何种结构，每个模块的 `doc_path` 必须唯一，且最终写入位置必须在文档输出目录内。如果实际写入路径与 `module_tree.json` 中记录的 `doc_path` 不一致（扁平化重写），在最终报告中说明。
+严格按照 `processing_order.json.steps` 处理模块，叶子模块先于父模块。
 
-#### 5.2 处理顺序
+每个 `processing_order.json.steps[].module_id` 都必须产生对应的模块文档。模块数量过多时可以分批生成，但不能跳过模块、合并模块，或只输出 `overview.md`。
 
-严格按照 `processing_order.json.steps` 处理模块。叶子模块在前，父模块在后（即使采用扁平结构，仍按此顺序保证内部一致性）。
+叶子模块写作：
 
-#### 5.3 叶子模块写作流程
+- 读取 `modules/<module_id>.json`，按需读取组件详情 JSON。
+- 按 [模块文档模板](references/module-document-template.md) 的叶子模块 10 段固定章节输出，不得调整顺序。
+- 篇幅优先给业务流程：业务概述和“数据流/业务流程”必须先讲清楚，再写模块结构、组件和配置。
+- 第 4 节“数据流”按 [流程章节模板](references/flow-section-template.md) 展开；存在前端对齐结果时，优先写 `frontend_driven_flows`，已在前端流程中出现过的后端 endpoint 不重复展开。
+- 业务规则章节谨慎生成：只有当源码、前端流程或配置中能明确证明规则存在且有业务价值时才输出。
+- 依赖关系按 [依赖分析规则](references/dependency-analysis-rules.md) 生成；不要仅根据 `pom.xml` 推断模块依赖。
+- 第 5 节“集成点”使用 `modules/*.json.remote_endpoints`；字段不足时按 [远程调用识别规则](references/remote-call-recognition.md) fallback，并标注来源。
+- 每个 Spring 组件标题下必须紧跟 `**File**: <file_path>`。
+- 所有源码引用必须含 `<file_path>:Lstart-Lend`；找不到行号时显式标注“行号未知”。
 
-1. 读取 `modules/<module_id>.json`。
-2. 按需读取组件详情 JSON，优先读取 Controller、Service、Configuration、领域模型、远程客户端、消息处理器、任务处理器和跨模块依赖来源；DTO/VO/枚举仅在决定流程时读取。
-3. 按 [模块文档模板](references/module-document-template.md) §"叶子模块" 的 10 段固定章节顺序输出。**章节顺序不得调整，不得跳过**；无内容的章节写"无（说明原因）"。
-4. **第 4 节"数据流"**：
-   - **若工作内存中本模块含 `frontend_driven_flows`（即存在前端 analysis）**：先按 [模块文档模板 §4.0](references/module-document-template.md) 写「前端业务流程」，每条 `matched_flow` 按 [流程章节模板 §2.1](references/flow-section-template.md) 「前端驱动变体」展开（含 User/Page/FrontApi 起手的 sequenceDiagram、步骤详解、`match_level` 与 `confidence` 措辞、alt 分支）。然后在 §4.X「后端入口」中处理剩余的**重要入口**——已在 §4.0 出现过的 endpoint 不重复展开，正文写"见 §4.0.X"交叉引用即可；**次要入口**按 [流程章节模板 §3](references/flow-section-template.md) 简写。若本模块涉及 `frontend_only_flows`，在 §4.0 末尾追加"前端独立流程"小节，明示"未在当前后端代码中找到对应 endpoint"。
-   - **无前端 analysis 时**：跳过 §4.0，对本模块所有**重要入口**严格按 [流程章节模板 §2](references/flow-section-template.md) 展开（含 sequenceDiagram + 编号步骤 + 行号锚点 + alt 异常分支）；**次要入口**按 §3 简写。
-5. **第 5 节"集成点"**：使用 `modules/*.json.remote_endpoints` 直接填表；若该字段为空但 fallback 识别到远程调用，按 [远程调用识别](references/remote-call-recognition.md) 填表并标"来源 = fallback"。
-6. 每个 Spring 组件标题下**必须**紧跟 `**File**: <file_path>`。
-7. 所有源码引用必须含 `<file_path>:Lstart-Lend`；找不到行号时显式标注"行号未知"。前端步骤的行号若 `page_flows.json` 未提供，写"(行号未知，前端 analyzer 未提供 span)"。
-8. 写入模块的最终 `doc_path`（按 §5.1 决定的结构）。
-9. 检查 Markdown 链接和 Mermaid 图。
+父模块写作：
 
-#### 5.4 父模块写作流程（仅在分层结构下使用）
-
-1. 读取 `modules/<module_id>.json` + 子模块的 `entry_points` 与 `external_systems` 汇总。
-2. 按模板"父模块"6 段结构输出。
-3. **第 4 节"跨模块业务流"**：必须至少一张跨越多个子模块的 sequenceDiagram，按 [流程章节模板](references/flow-section-template.md) §2 展开（含行号锚点 + alt 分支）。不要写"API → Application → Domain → Persistence"这种空泛分层套话。
-4. 不复制子模块组件细节。
-
-#### 5.5 硬约束
-
-以下任一项违反必须修复后才能进入下一步：
-
-- 每个重要入口对应的"数据流"段缺少 sequenceDiagram、行号锚点或 alt 分支。
-- 远程调用未在"集成点"列出 URL（或显式 `${...}` / `<unresolved>` 标记）。
-- 任何 Spring 组件标题下缺 `**File**`。
-- 任何流程步骤引用的类名、方法名、字段名在 `components/*.json` 中找不到（必须删除该引用，不得杜撰）。
-- 出现 "通过 RestTemplate 调用外部服务" 这类无方法、无 URL、无行号的空表述。
+- 只在分层结构下生成。
+- 读取父模块及其子模块摘要，按 [模块文档模板](references/module-document-template.md) 的父模块结构输出。
+- 至少提供一条真实可追溯的跨模块业务流，不复制子模块组件细节。
 
 ### 6. 生成仓库总览
 
-所有模块文档完成后生成 `overview.md`。
+所有模块文档完成后生成 `overview.md`，结构参考 [仓库总览模板](references/overview-template.md)。如果任一 `processing_order.json.steps[].module_id` 对应的模块文档尚未生成，不得进入总览生成阶段。
 
-总览使用：
+总览必须使用：
 
-- `analysis.json` 的仓库信息、Maven 模块、统计和诊断。
+- `analysis.json` 的仓库、构建系统、统计和诊断信息。
 - `module_tree.json` 的顶层模块导航。
 - `dependencies.json` 的依赖方向。
 - 已完成模块文档的简短摘要。
-- 若存在前端 analysis：§4.5.B 工作内存中的 `matched_flows / frontend_only_flows / backend_only_endpoints` 全集。
+- 若存在前端 analysis：`matched_flows / frontend_only_flows / backend_only_endpoints` 全集。
 
-总览结构参考 [仓库总览模板](references/overview-template.md)。
+存在前端 analysis 时，总览必须包含“前后端对齐总览”，说明对齐统计、匹配等级分布、典型未对齐流程和可信度限制。关键流程优先选择 `matched_flows.overall_confidence == high` 的端到端业务路径。
 
-若存在前端 analysis：
-
-- §5「关键流程」必须优先从 `matched_flows.overall_confidence == high` 中挑选 2-4 条端到端业务路径，参与者覆盖 `User → Page.vue → frontend API → Controller → Service → RemoteClient → External`。
-- 必须输出 §5.X「前后端对齐总览」小节（对齐统计、对齐方式分布、典型未对齐流程示例）。
-- 若大多数 `matched_flows` 是 `suffix_match`，在总览中提示用户确认网关前缀。
+不要在同一次任务中生成“后端 overview”和“前端 overview”两份并列总览；联合场景只生成一份 `overview.md`，其系统架构图同时包含前端页面、后端模块和外部系统。
 
 ### 7. 完成前校验
 
@@ -324,24 +277,37 @@ node vuewiki-analyzer/src/cli.js analyze <frontend-repo-path-or-git-url> -o <fro
 
 - `overview.md` 存在。
 - 每个模块 `doc_path` 存在。
+- `processing_order.json.steps` 中每个 `module_id` 都已生成对应文档；不能只有 `overview.md`。
+- `overview.md` 只做导航和全景总结，不能替代模块文档。
+- 文档没有退化成 API 文档：不得存在交易码列表、完整接口参数表或大段接口清单。
+- 每条业务流程、业务规则、模块依赖和 Mermaid 边都能追溯到证据清单；证据不足处已明确标注，未写成确定事实。
 - 内部 Markdown 链接可解析。
-- Mermaid 语法已用可用工具校验；如果没有校验工具，明确说明。
-- 文档没有引用 artifacts 或源码片段中不存在的类、接口、依赖或流程。
+- Mermaid 语法符合 [Mermaid 规则](references/mermaid-rules.md)；如果没有可用校验工具，最终报告中说明。
+- 文档没有引用 artifacts 或源码中不存在的类、接口、依赖、字段、URL 或流程。
 - 没有修改源码仓库。
 - 除模型聚合需要写回的最终 artifacts 外，没有无关修改分析产物。
 
-最终报告生成文件、分析统计、聚合模式、诊断信息和仍不确定的边界。
+最终报告说明生成文件、分析统计、聚合模式、关键诊断和仍不确定的边界。
+
+## 迭代确认
+
+首轮完整生成、批量重写或重要结构调整后，向用户确认是否符合预期，说明：
+
+- 已生成或修改的文档范围。
+- 已覆盖的核心业务流程。
+- 仍不确定或证据不足的边界。
+
+在用户确认方向前，不要连续多轮大规模重写。用户明确指出问题后，下一轮只围绕该问题修正；重要修改前先确认方向。
 
 ## 失败处理
 
-- analyzer 不可用且没有现成 artifacts：停止并说明需要先运行 `javawiki analyze`。
-- 远端仓库或本地仓库存在 submodule 缺失：优先建议使用 `--submodules auto` 或 `--init-submodules` 重新分析；继续生成时必须记录限制。
-- `candidate_modules.json` 缺失但需要模型聚合：使用现有 `module_tree.json` 前先说明只能使用规则 fallback。
+- analyzer 不可用且没有现成 artifacts：停止并说明需要先运行对应 analyzer。
+- 远端仓库或本地仓库存在 submodule 缺失：优先建议用 `--submodules auto` 或 `--init-submodules` 重新分析；继续生成时必须记录限制。
+- `candidate_modules.json` 缺失但需要模型聚合：只能使用现有 `module_tree.json`，并说明模块边界来自规则 fallback。
 - artifacts schema 不匹配：停止生成，列出不兼容文件或字段。
 - 模型聚合无法确定业务边界：保留更高层模块，记录原因，不强行细拆。
-- 组件源码过大：只读取当前模块所需的方法、注解、字段和依赖记录。
 - 组件源码或解析数据缺失：在文档中标注限制，避免推测性说明。
-- `remote_url_unresolved` 数量较多（占 `total_remote_endpoints` ≥ 30%）：在每个受影响模块文档"维护注意事项"中明示，并提示用户检查 `application.yml` 中的占位符配置或重跑 analyzer。
-- 前端 analysis 缺失或解析失败（`page_flows.json` 不存在 / `summary.total_page_flows == 0` / 关键 diagnostic）：自动降级为纯后端流程，不再生成 §4.0「前端业务流程」与 §5.X「前后端对齐总览」，并在最终报告中说明降级原因。
-- 前端 endpoint 与后端 0 命中（`matched_flows` 为空但 `frontend_only_flows` 非空）：保留 frontend_only_flows 章节并在总览警示"当前后端代码与前端 API 集合不在同一服务边界，疑似只是前端 + 网关 / 中台调用"。
-- 前端 `confidence == low` 的 step 比例超过 50%：在总览"前后端对齐总览"小节明示对齐结果可信度受限，建议用户查看前端 analyzer 的 `frontend_runtime_path_unresolved` 诊断。
+- `remote_url_unresolved` 数量较多：在受影响模块的维护注意事项中提示配置项或远程 URL 解析不完整。
+- 前端 analysis 缺失或解析失败：自动降级为纯后端流程，不生成前端业务流程和前后端对齐总览，并在最终报告中说明原因。
+- 前端 endpoint 与后端 0 命中：保留 `frontend_only_flows`，并提示当前前端 API 集合可能不属于该后端服务边界。
+- 前端 `confidence == low` 的 step 比例过高：在前后端对齐总览中说明可信度受限。

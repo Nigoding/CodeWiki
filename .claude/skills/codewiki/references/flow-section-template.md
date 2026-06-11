@@ -6,12 +6,29 @@
 
 ## 1. 何谓重要入口
 
-由 `SKILL.md §4.5 入口流程清单生成` 阶段标记。任一条件成立即视为重要：
+由 `SKILL.md §4「入口流程清单生成」` 阶段标记。任一条件成立即视为重要：
 
 - 调用深度 ≥ 3（沿 `methods[].calls.resolved_component` 递归）。
 - 调用链命中 `remote_call` 边（依赖 `dependencies.json` 中 `kind == "remote_call"` 或组件 `remote_endpoints` 非空）。
 - 跨越 ≥ 2 个 Spring stereotype（如 controller → service → remote_client_feign）。
 - 入口本身是定时任务（`@Scheduled`）、消息消费者（`@RabbitListener`/`@KafkaListener`）或事件监听（`@EventListener`）。
+
+## 1.5 流程可生成条件
+
+只有满足以下条件时，才可以把入口展开为正式业务流程：
+
+- 必须存在明确入口证据：后端入口来自 `components/*.json.entry_points`、定时/消息/事件监听方法，或前端 flow 来自 `page_flows.json`。
+- 必须存在调用链证据：后端链路来自 `methods[].calls[].resolved_component`、`dependencies.json` 或源码中的实际方法调用；前端链路来自 `page_flows.json.steps[]` 与 `api_index.json.api_calls[]`。
+- 必须存在业务含义证据：流程名称、触发点、关键字段或返回处理至少能从前端页面标题、bizId、API 函数名、后端方法名、配置或源码分支中确认。
+- Mermaid 图中的 participant、消息和边必须与上述证据一致。
+
+不满足条件时按以下方式降级：
+
+- 没有入口证据：不生成该流程。
+- 只有入口、没有调用链：写成入口说明或次要入口简写，不得扩展为端到端流程。
+- 没有异常、状态流转、条件分支或配置证据：不画对应 `alt` 分支；可写“当前源码未确认异常/分支处理”。
+- 前端 `confidence == low`：不展开为正式业务流程，仅在维护注意事项或分析说明中列为低置信度线索。
+- 只有业务常识、命名猜测或接口路径相似：不得生成流程；必须标注为待确认点。
 
 ## 2. 重要入口流程章节骨架
 
@@ -155,7 +172,7 @@ sequenceDiagram
 - **每步必须含行号**：`file_path:Lstart-Lend` 是硬要求；如果分析产物的 `span` 缺失，需在该步显式标注 "行号未知（analyzer 未提供）"，不得直接省略。
 - **类名/方法名一致**：所有引用必须出现在 `components/*.json` 的 `qualified_name`、`methods[].name`、`fields[].name` 中。任何 prompt 推断出来但 artifacts 找不到的名字必须删除。
 - **远程调用必须列 URL 或显式标记 `<unresolved>`**：禁止用 "调用外部服务" 这类无信息描述。
-- **`alt` 分支必须画**：异常 / 超时 / 业务拒绝任选一条最常见的分叉，不允许只画成功路径。
+- **`alt` 分支基于证据生成**：只有源码、配置或 artifacts 能证明异常 / 超时 / 业务拒绝分支时才画；没有证据时不画分支，并写明“当前源码未确认异常/分支处理”。
 - **sequenceDiagram 参与者命名**：使用 Spring 组件的 `simple_name`，不使用完整 qualified_name（防止 Mermaid 解析错误）。如需消歧加 `participant svc as UserService`。
 - **不杜撰**：源码或 artifacts 中找不到的字段、方法、URL、异常类一律不写。可写"行为未在源码中显式标注，需结合下游文档确认"。
 

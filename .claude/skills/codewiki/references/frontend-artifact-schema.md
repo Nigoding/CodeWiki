@@ -24,11 +24,20 @@
 
 - `schema_version`
 - `source`
-- `framework`：当前目标是 Vue2。
+- `framework`：当前目标是 Vue2，期望 `name == "vue"` 且 `version_major == 2`。
 - `entry_config`：通常为 `owl.config.js`。
 - `artifacts`
 - `summary`
 - `diagnostics`
+
+`summary` 常用字段：
+
+- `total_modules`
+- `total_pages`
+- `total_components`
+- `total_api_defs`
+- `total_page_flows`
+- `total_backend_api_usages`
 
 ## `module_tree.json`
 

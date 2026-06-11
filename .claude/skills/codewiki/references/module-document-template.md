@@ -5,8 +5,11 @@
 ## 通用规则
 
 - 写入 `module_tree.json` 中的模块 `doc_path`。
+- 每个 `processing_order.json.steps[].module_id` 都必须有独立模块文档；`overview.md` 不能替代模块文档。
 - 一级标题使用模块 `name`。
 - 链接使用相对当前 Markdown 文件的路径。
+- 这是业务说明文档，不是 API 文档。不要输出交易码列表、完整接口表格、请求/响应参数清单或接口手册式内容。
+- 文档篇幅优先给业务概述、业务流程和模块依赖；代码结构、组件列表和配置只写支撑理解所需的内容。
 - 提到 Java 类型时使用 `qualified_name`；类标题下**必须**紧跟 `**File**: <file_path>`。
 - 流程关键步骤**必须**能在源码中找到对应行号；引用格式：`<file_path>:Lstart-Lend`。
 - 提到接口、依赖、Maven 模块或组件时，必须能在 `modules/*.json`、`components/*.json`、`dependencies.json` 或 `analysis.json.build_system` 中找到依据。
@@ -20,11 +23,23 @@
 ```markdown
 # 模块名称
 
-## 1. 概述（Introduction）
+## 1. 业务概述（Business Overview）
 
 说明本模块在 Java/Maven/Spring 系统中的职责、边界和不负责的内容。1-3 段，每段 ≤ 4 行。
 
-## 2. 架构总览（Architecture Overview）
+## 2. 业务流程（Business Flows）
+
+本节是模块文档重点。优先写前端驱动流程和重要后端入口，按 [flow-section-template.md](flow-section-template.md) 展开；接口路径只作为流程证据出现，不输出完整 API 清单。
+
+当存在前端 analysis 时，先写“前端业务流程”，再写未被前端覆盖的重要后端入口。已在前端流程中出现过的后端 endpoint 不重复展开，正文交叉引用即可。
+
+业务流程必须配 Mermaid 图。端到端调用链使用 `sequenceDiagram`；纯业务状态流、审批流、阶段流可使用 `flowchart TD`。
+
+## 3. 业务规则（Business Rules）
+
+仅当源码、配置或前端流程中能明确证明规则存在且有业务价值时输出。没有明确业务规则时写“无明确业务规则证据”，不要把参数校验、DTO 字段或枚举清单包装成业务规则。
+
+## 4. 模块结构（Module Structure）
 
 ​```mermaid
 graph TB
@@ -44,7 +59,7 @@ graph TB
 - 节点取自本模块组件 `simple_name`；外部节点取自 `modules/*.json.external_systems`。
 - 边的依据是 `dependencies.json` 中本模块组件的 `component_dependencies`。
 
-## 3. 核心组件（Core Components）
+## 5. 核心组件（Core Components）
 
 按 stereotype 分小节：Controllers / Services / Remote Clients / Configurations / Domain Models / Schedulers / Listeners。
 
@@ -55,68 +70,36 @@ graph TB
 **File**: `<file_path>`
 
 - **职责**：1-2 句。
-- **Key Endpoints**（若是 Controller / Feign）：
-  | HTTP | 路径 | 方法 | 一句话作用 |
-  |------|------|------|------------|
-  | POST | /api/x/create | `createX()` | 创建 X 实例 |
+- **业务入口**（若是 Controller / Feign）：只列与核心业务流程相关的入口，说明其业务作用；不要输出完整接口表。
 - **Key Operations**（若是 Service）：
   - `doSomething()` — `<file>:Lxx-Lyy`：一句话作用。
 - **Key Fields**：列重要字段（含远程客户端字段、`@Value` 配置字段）；DTO 类型字段不必逐个列出。
 - **继承/实现**：`extends X` / `implements Y`。
 
-## 4. 数据流（Data Flow）
+## 6. 模块依赖（Module Dependencies）
 
-> **当前后端 + 前端 analysis 同时存在时**：先写 §4.0，再写 §4.X。`matched_flows` 已经把前端入口对齐到本模块的后端 endpoint —— 这些 endpoint 在 §4.X 不重复展开，正文交叉引用 `见 §4.0.X`。`backend_only_endpoints.important` 仍按 §4.X 完整展开。
+按 [dependency-analysis-rules.md](dependency-analysis-rules.md) 输出。依赖描述必须尽量细化到“模块名 → 服务类 → 具体方法 → 调用目的”，并配 Mermaid `graph TB` 或 `graph LR`。不要只根据 `pom.xml` 推断依赖关系。
 
-### 4.0 前端业务流程（Frontend-Driven Flows，仅当存在前端 analysis 时输出）
+## 7. 集成点（Integration Points）
 
-数据源：[frontend-backend-alignment.md](frontend-backend-alignment.md) §4 产出的 `matched_flows`（按 frontend module → page → flow_id 排序），仅取本后端模块涉及的 flow。
-
-对每条 `matched_flow`，按 [flow-section-template.md](flow-section-template.md) §2.1「前端驱动变体」完整展开（含 User/Page/FrontApi 起手的 sequenceDiagram + 步骤详解 + alt 分支 + 行号锚点）。
-
-若该模块还存在 `frontend_only_flows`，在本节末尾追加小节"前端独立流程"，列出每条未对齐的前端流程，明确标"未在当前后端代码中找到对应 endpoint，可能由其他后端服务或中台实现"。
-
-### 4.X 后端入口
-
-对每个被标记为"重要入口"的 endpoint，严格按 [flow-section-template.md](flow-section-template.md) §2 展开（含 sequenceDiagram、编号步骤、行号锚点、alt 异常分支）。**已在 §4.0 出现过的 endpoint 不重复展开**，正文一句话交叉引用即可。
-
-对非重要入口，按 flow-section-template §3 的简写规则列调用链 bullet。
-
-## 5. 集成点（Integration Points）
-
-| HTTP | URL | 调用类 | 调用方法 | 客户端类型 | 来源 |
-|------|-----|--------|----------|------------|------|
-| POST | ${inventory.platform.url}/inventory/freeze | `OrderService` | `freezeStock()` | feign | analyzer |
-| GET  | http://api.partner.com/v1/user/{id} | `UserService` | `getForObject()` | rest_template | analyzer |
+| 外部系统 | 调用类 | 调用方法 | 用途 | 来源 |
+|----------|--------|----------|------|------|
+| ${inventory.platform.url} | `OrderService` | `freezeStock()` | 下单前冻结库存 | analyzer |
 
 - 数据来自 `modules/*.json.remote_endpoints`；若该字段为空但源码可见远程调用，按 [remote-call-recognition.md](remote-call-recognition.md) fallback 填写并标"来源 = fallback"。
 - URL 为占位符时附一行"配置项：`<key>` 见 `application.yml`/`bootstrap.yml`"。
 - 无远程调用时写"本模块无对外远程调用"。
 
-## 6. 配置（Configuration）
+## 8. 配置与错误处理（Configuration & Error Handling）
 
-- 列出 `@ConfigurationProperties` 类、`@Value` 注入的配置 key、关键的 `application.yml` 配置项（含远程超时、重试、降级）。
-- 引用格式：`<key>` — `<file_path>:Lxx`（若可读取到 yml）或仅列 key + 用途。
-- 无配置类时写"无独立配置"。
-
-## 7. 错误处理（Error Handling）
-
-- 自定义异常类清单（继承自 RuntimeException 或框架异常）。
-- 全局异常处理：`@ControllerAdvice` / `@ExceptionHandler` 落点 + 行号。
-- 错误码表：
-  | 错误码 | 含义 | 触发场景 | 源码位置 |
-  |--------|------|----------|----------|
-- 无统一错误处理时写"无独立错误处理（依赖上层 ControllerAdvice）"。
-
-## 8. 依赖关系（Dependencies）
-
-- **内部依赖**：列出本模块依赖的其他文档模块 + 关系类型（`constructor_injection` / `method_call` / `extends` / `implements`）。数据源 `modules/*.json.external_dependencies`。
-- **外部系统依赖**：列出本模块调用的外部主机 / 服务，数据源 `modules/*.json.external_systems`。
+- 列出会影响业务行为的配置项，例如开关、阈值、超时、重试、降级。
+- 列出核心错误处理路径、错误码含义和业务拒绝场景。
+- 不输出纯技术参数清单。
 
 ## 9. 维护注意事项（Maintenance Notes）
 
 - 事务、扩展点、并发风险。
-- 远程调用注意：超时、重试、降级、降级降级链路。
+- 远程调用注意：超时、重试、降级链路。
 - analyzer 覆盖不足的地方（如使用 fallback 识别、`<unresolved>` URL 数量、`source_code` 截断）。
 - Schema 版本警告（若读到 `schema_version < 1.1` 必须在此说明）。
 
@@ -175,20 +158,20 @@ graph TB
 
 按优先级：
 
-1. `RestController` / `Controller` 对外入口及其完整调用链。
-2. 远程客户端（`@FeignClient`、`@HttpExchange`、`RestTemplate` 字段、`WebClient` 字段、`HttpClient` 字段）及目标 URL。
-3. `Service` 之间的调用链（含跨模块）。
-4. 领域聚合、值对象、领域服务（如有）。
-5. `Configuration`、`@Bean`、`@ConfigurationProperties` 对运行时行为的影响（含远程超时/重试）。
-6. MQ producer/consumer、`@Scheduled` 任务、`@EventListener`。
-7. 模块依赖方向是否符合预期。
+1. 业务流程：前端页面触发、Controller 承接、Service 编排、远程调用和返回处理。
+2. 业务规则：有源码或配置证据的状态流转、阈值、开关、准入/拒绝条件。
+3. 模块依赖：实际服务类和方法调用，含跨模块调用。
+4. 远程客户端：`@FeignClient`、`@HttpExchange`、`RestTemplate`、`WebClient` 等及目标系统。
+5. MQ producer/consumer、`@Scheduled` 任务、`@EventListener`。
+6. 配置和错误处理对业务行为的影响。
 
 ## Mermaid 图
 
 仅在图能提高理解时使用。强制场景：
 
-- **§2 架构总览**：模块组件数 ≥ 2 必出 `graph TB`。
-- **§4 数据流**：每个"重要入口"必出 `sequenceDiagram`（异常用 `alt`）。
+- **业务流程**：每个重要流程必出 `sequenceDiagram` 或 `flowchart TD`。
+- **模块结构**：模块组件数 ≥ 2 必出 `graph TB`。
+- **模块依赖**：跨模块依赖必须尽量出 `graph LR` 或 `graph TB`，边上标注服务类/方法。
 - **领域实体多于 3 个**：可加 `classDiagram` 展示字段与关系。
 
 参考 [mermaid-rules.md](mermaid-rules.md)。

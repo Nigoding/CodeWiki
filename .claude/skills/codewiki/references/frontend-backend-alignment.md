@@ -1,6 +1,6 @@
 # 前后端调用对齐规则
 
-文档生成时如果同时拥有 `javawiki-analyzer`（后端）和 `vuewiki-analyzer`（前端）的分析产物，必须执行前后端 endpoint 对齐：以前端 `page_flows.json` 中的用户业务入口为主线，沿着前端调用顺序映射到对应的后端 endpoint，再下钻后端调用链。这是生成"以业务为线索"文档的关键步骤。
+文档生成时如果同时拥有 `javawiki-analyzer`（后端）和 `vuewiki-analyzer`（前端）的分析产物，必须执行前后端 endpoint 对齐：以前端 `page_flows.json` 中的用户业务入口为主线，沿着前端调用顺序映射到对应的后端 endpoint，再下钻后端调用链。这是生成"以业务为线索"的单份融合文档的关键步骤，不要把前端仓库和后端仓库拆成两份独立 wiki。
 
 本文档定义对齐键、规范化规则、命中分类和未匹配处理策略。
 
@@ -133,7 +133,7 @@
 
 ### 4.2 backend_only_endpoints 分级
 
-复用 SKILL.md §4.5 现有的"重要入口"启发式（调用深度 ≥ 3、命中 remote_endpoints、跨 ≥ 2 stereotype、`@Scheduled` / 消息消费者 / 事件监听）。命中任一即标 `important`，其余 `minor`。
+复用 SKILL.md §4「入口流程清单生成」中的"重要入口"启发式（调用深度 ≥ 3、命中 remote_endpoints、跨 ≥ 2 stereotype、`@Scheduled` / 消息消费者 / 事件监听）。命中任一即标 `important`，其余 `minor`。
 
 ## 5. 写文档时如何使用对齐结果
 
